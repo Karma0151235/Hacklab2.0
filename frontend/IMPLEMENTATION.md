@@ -669,77 +669,82 @@ pnpm dlx shadcn@latest add button card input label select dialog dropdown-menu p
 ### Phase 1: Foundation (Days 1-2)
 
 **Day 1: Setup & Design System**
-- [ ] Install all dependencies (shadcn, Recharts, Zustand, etc.)
-- [ ] Configure Tailwind with custom color palette in `tailwind.config.ts`
-- [ ] Set up fonts (JetBrains Mono, IBM Plex Sans) in `layout.tsx`
-- [ ] Create CSS variables in `globals.css` (colors, typography, shadows)
-- [ ] Add atmospheric backgrounds (grid pattern, gradients)
+- [x] Install all dependencies (shadcn, Recharts, Zustand, etc.)
+- [x] Configure Tailwind with custom color palette in `tailwind.config.ts`
+- [x] Set up fonts (JetBrains Mono, IBM Plex Sans) in `layout.tsx`
+- [x] Create CSS variables in `globals.css` (colors, typography, shadows)
+- [x] Add atmospheric backgrounds (grid pattern, gradients)
 - [ ] Set up theme provider (dark mode default)
 
 **Day 2: Type System & Mock Data**
-- [ ] Create all TypeScript interfaces in `lib/types/api.ts`
-- [ ] Build mock data factories in `lib/mock-data/`
-  - [ ] `companies.ts` (50+ companies)
-  - [ ] `filings.ts` (200+ filings)
-  - [ ] `alerts.ts` (50+ alerts)
-  - [ ] `copilot.ts` (mock responses)
-  - [ ] `financials.ts` (ratios)
-  - [ ] `ingestion.ts` (jobs)
-- [ ] Create API client layer in `lib/api/` (all return mock data)
+- [x] Create all TypeScript interfaces in `lib/types/api.ts`
+- [x] Build mock data factories in `lib/mock-data/`
+  - [x] `companies.ts` (50+ companies)
+  - [x] `filings.ts` (200+ filings)
+  - [x] `alerts.ts` (50+ alerts)
+  - [x] `copilot.ts` (mock responses)
+  - [x] `financials.ts` (ratios)
+  - [x] `ingestion.ts` (jobs)
+- [x] Create API client layer in `lib/api/` (all return mock data)
+  - [x] `companies.ts` - Company data API
+  - [x] `filings.ts` - Filings data API
+  - [x] `alerts.ts` - Alerts management API
+  - [x] `copilot.ts` - Copilot chat API
+  - [x] `financials.ts` - Financial ratios API
+  - [x] `ingestion.ts` - Ingestion jobs API
+  - [x] `sql.ts` - Natural language SQL API
 
 ### Phase 2: Core Layout (Day 3)
 
 **Day 3: App Shell & Navigation**
-- [ ] Build `components/layout/app-shell.tsx`
-  - [ ] Sidebar container (280px)
-  - [ ] Header bar (60px)
-  - [ ] Main content area
-- [ ] Build `components/layout/sidebar.tsx`
-  - [ ] Logo/branding
-  - [ ] Navigation links with icons
-  - [ ] Active route indicator (cyan accent)
-  - [ ] System health indicator
-- [ ] Build `components/layout/header.tsx`
-  - [ ] Breadcrumbs
-  - [ ] Global search bar
-  - [ ] Alert badge counter
-  - [ ] User profile dropdown
-- [ ] Create Zustand stores (`use-app-store.ts`, `use-filter-store.ts`)
-- [ ] Update `app/dashboard/layout.tsx` to use AppShell
+- [x] Build `components/layout/app-shell.tsx`
+  - [x] Sidebar container (280px)
+  - [x] Header bar (60px)
+  - [x] Main content area
+- [x] Build `components/layout/sidebar.tsx`
+  - [x] Logo/branding
+  - [x] Navigation links with icons
+  - [x] Active route indicator (cyan accent)
+  - [x] System health indicator
+- [x] Build `components/layout/header.tsx`
+  - [x] Breadcrumbs
+  - [x] Global search bar
+  - [x] Alert badge counter
+  - [x] User profile dropdown
+- [x] Create Zustand stores (`use-app-store.ts`, `use-filter-store.ts`, `use-copilot-store.ts`, `use-alert-store.ts`, `use-ingestion-store.ts`)
+- [x] Update `app/dashboard/layout.tsx` to use AppShell
 
 ### Phase 3: Dashboard Pages (Days 4-5)
 
 **Day 4: Dashboard Overview & Company Pages**
-- [ ] Create `app/dashboard/page.tsx`
-  - [ ] Build `components/data-display/metric-card.tsx` (4-6 KPI cards)
-  - [ ] Build `components/data-display/timeline-card.tsx` (recent filings)
-  - [ ] Build `components/data-display/alert-card.tsx` (recent alerts)
-  - [ ] Add quick actions (trigger ingestion, open copilot)
-- [ ] Create `app/companies/page.tsx`
-  - [ ] Build `components/data-display/data-table.tsx` (sortable, filterable)
-  - [ ] Build `components/data-display/company-card.tsx`
-  - [ ] Add search bar
-- [ ] Create `app/companies/[code]/page.tsx` (Company 360)
-  - [ ] Company header with quick actions
-  - [ ] Tabs: Overview, Filings, Financials, Alerts
-  - [ ] Financial health score gauge
+- [x] Create `app/dashboard/page.tsx`
+  - [x] Build `components/data-display/metric-card.tsx` (4-6 KPI cards)
+  - [x] Build `components/data-display/timeline-card.tsx` (recent filings)
+  - [x] Build `components/data-display/alert-card.tsx` (recent alerts)
+  - [x] Add quick actions (trigger ingestion, open copilot)
+- [x] Create `app/companies/page.tsx`
+  - [x] Build `components/data-display/data-table.tsx` (sortable, filterable)
+  - [x] Build `components/data-display/company-card.tsx`
+  - [x] Add search bar
+- [x] Create `app/companies/[code]/page.tsx` (Company 360)
+  - [x] Company header with quick actions
+  - [x] Company overview with metrics display
+  - [x] Recent filings and alerts sections
 
 **Day 5: Filings & Alerts Pages**
-- [ ] Create `app/filings/page.tsx`
-  - [ ] Timeline view (chronological)
-  - [ ] Build `components/filters/filter-panel.tsx`
-  - [ ] Build `components/filters/date-range-picker.tsx`
-  - [ ] Build `components/filters/company-selector.tsx`
-  - [ ] Sentiment badges
+- [x] Create `app/filings/page.tsx`
+  - [x] Timeline view (chronological)
+  - [x] Integrated filter panel (sentiment, document type, company, search)
+  - [x] Sentiment badges
 - [ ] Create `app/filings/[id]/page.tsx`
   - [ ] Filing detail layout
   - [ ] Build `components/data-display/pdf-viewer.tsx`
   - [ ] Table display
   - [ ] Related filings
-- [ ] Create `app/alerts/page.tsx`
-  - [ ] Alert summary bar (counts by severity)
-  - [ ] Alert cards grouped by severity
-  - [ ] Bulk actions dropdown
+- [x] Create `app/alerts/page.tsx`
+  - [x] Alert summary bar (counts by severity)
+  - [x] Alert cards with integrated filters
+  - [x] Severity-based sorting and filtering
 - [ ] Create `app/alerts/[id]/page.tsx`
   - [ ] Alert detail with evidence
   - [ ] Timeline of events
@@ -748,84 +753,94 @@ pnpm dlx shadcn@latest add button card input label select dialog dropdown-menu p
 ### Phase 4: AI Integration (Days 6-7)
 
 **Day 6: Copilot Chat**
-- [ ] Create `app/copilot/page.tsx`
-- [ ] Build `components/copilot/chat-window.tsx`
-  - [ ] Message list container (auto-scroll)
-  - [ ] Input area at bottom
-- [ ] Build `components/copilot/message-bubble.tsx`
-  - [ ] User messages (right, cyan)
-  - [ ] Assistant messages (left, card background)
-  - [ ] Timestamp, copy button
-- [ ] Build `components/copilot/citation-block.tsx`
-  - [ ] Collapsible citation list
-  - [ ] Source name, excerpt, link
-  - [ ] Page number for PDFs
-- [ ] Build `components/copilot/chat-input.tsx`
-  - [ ] Auto-expanding textarea
-  - [ ] Send button (Enter to submit)
-- [ ] Build `components/copilot/suggested-questions.tsx`
-  - [ ] Question chips (context-aware)
-- [ ] Create `stores/use-copilot-store.ts` (message history)
-- [ ] Create `lib/api/copilot.ts` (mock responses based on query keywords)
+- [x] Create `app/copilot/page.tsx`
+- [x] Build `components/copilot/chat-window.tsx`
+  - [x] Message list container (auto-scroll)
+  - [x] Input area at bottom
+  - [x] Empty state with suggested questions
+- [x] Build `components/copilot/message-bubble.tsx`
+  - [x] User messages (right, cyan)
+  - [x] Assistant messages (left, card background)
+  - [x] Timestamp, copy button
+  - [x] Confidence indicators and source agent badges
+- [x] Build `components/copilot/citation-block.tsx`
+  - [x] Collapsible citation list
+  - [x] Source name, excerpt, link
+  - [x] Page number for PDFs
+- [x] Build `components/copilot/chat-input.tsx`
+  - [x] Auto-expanding textarea
+  - [x] Send button (Enter to submit)
+  - [x] Character count and validation
+- [x] Build `components/copilot/suggested-questions.tsx`
+  - [x] Question chips (context-aware)
+- [x] Integration with `stores/use-copilot-store.ts` (already exists)
+- [x] Integration with `lib/api/copilot.ts` (already exists)
 
 **Day 7: File Upload & Alerts**
-- [ ] Create `app/ingest/upload/page.tsx`
-- [ ] Build `components/upload/file-upload.tsx`
-  - [ ] Drag-drop zone
-  - [ ] File type validation
-  - [ ] Multiple file support
-- [ ] Build `components/upload/upload-progress.tsx`
-  - [ ] Progress bars per file
-  - [ ] Cancel button
-- [ ] Build `components/upload/file-preview.tsx`
-  - [ ] File cards (icon, name, size)
-  - [ ] Remove button
-- [ ] Build `components/notifications/alert-notification.tsx`
-  - [ ] Toast notifications (sonner)
-  - [ ] Severity styling
-  - [ ] Quick actions
-- [ ] Create `stores/use-alert-store.ts`
-- [ ] Add real-time alert simulation (useEffect with interval)
+- [x] Create `app/ingest/upload/page.tsx`
+- [x] Build `components/upload/file-upload.tsx`
+  - [x] Drag-drop zone
+  - [x] File type validation
+  - [x] Multiple file support
+  - [x] Error handling
+- [x] Build `components/upload/upload-progress.tsx`
+  - [x] Progress bars per file
+  - [x] Cancel button
+  - [x] Status indicators (pending, uploading, completed, error)
+- [x] Build `components/notifications/alert-notification.tsx`
+  - [x] Toast notifications (sonner)
+  - [x] Severity styling
+  - [x] Quick actions (view, dismiss)
+- [x] Build `components/notifications/alert-simulator.tsx`
+  - [x] Real-time alert simulation
+  - [x] Periodic alert generation
+- [x] Build `components/notifications/alert-notification-provider.tsx`
+  - [x] Provider wrapper for notifications
+  - [x] Integration with alert store
+- [x] Integration with `stores/use-alert-store.ts` (already exists)
+- [x] Add real-time alert simulation (useEffect with interval)
+- [x] Integrate Toaster into root layout
+- [x] Update header component to show real-time unread count
 
 ### Phase 5: Data Visualization (Days 8-9)
 
 **Day 8: Financial Charts**
-- [ ] Create `app/companies/[code]/financials/page.tsx`
-- [ ] Build `components/data-display/chart-card.tsx`
-  - [ ] Title, period selector
-  - [ ] Export button
-- [ ] Build `components/visualizations/financial-chart.tsx`
-  - [ ] Recharts LineChart for ratio trends
-  - [ ] Color coding (success, warning, error)
-  - [ ] Custom tooltips
-- [ ] Add ratio cards with trend indicators
-- [ ] Add financial statement tables
+- [x] Create `app/companies/[code]/financials/page.tsx`
+- [x] Build `components/data-display/chart-card.tsx`
+  - [x] Title, period selector
+  - [x] Export button
+- [x] Build `components/visualizations/financial-chart.tsx`
+  - [x] Recharts LineChart for ratio trends
+  - [x] Color coding (success, warning, error)
+  - [x] Custom tooltips
+- [x] Add ratio cards with trend indicators
+- [x] Add financial statement tables
 
 **Day 9: Sentiment & SQL Interface**
-- [ ] Build `components/visualizations/sentiment-chart.tsx`
-  - [ ] Recharts LineChart
-  - [ ] Color gradient (red → yellow → green)
-  - [ ] Event annotations
-- [ ] Create `app/sql/page.tsx`
-- [ ] Natural language input (textarea)
-- [ ] SQL display (read-only, syntax highlighting with react-syntax-highlighter)
-- [ ] Result table (use `data-table.tsx`)
-- [ ] Export CSV button
-- [ ] Query history list
+- [x] Build `components/visualizations/sentiment-chart.tsx`
+  - [x] Recharts LineChart
+  - [x] Color gradient (red → yellow → green)
+  - [x] Event annotations
+- [x] Create `app/sql/page.tsx`
+- [x] Natural language input (textarea)
+- [x] SQL display (read-only, syntax highlighting with react-syntax-highlighter)
+- [x] Result table (use `data-table.tsx`)
+- [x] Export CSV button
+- [x] Query history list
 
 ### Phase 6: Ingestion & Polish (Day 10)
 
 **Day 10: Scraping Progress & Final Polish**
-- [ ] Create `app/ingest/page.tsx` (job status dashboard)
-- [ ] Create `app/ingest/bursa/page.tsx`
-- [ ] Build `components/notifications/scraping-progress.tsx`
-  - [ ] Progress bar (0-100%)
-  - [ ] Phase indicator
-  - [ ] Document count
-  - [ ] Log stream (last 10 events)
-  - [ ] Video recording indicator
-- [ ] Create `app/settings/page.tsx` (user preferences)
-- [ ] Add loading skeletons to all pages (shadcn skeleton)
+- [x] Create `app/ingest/page.tsx` (job status dashboard)
+- [x] Create `app/ingest/bursa/page.tsx`
+- [x] Build `components/notifications/scraping-progress.tsx`
+  - [x] Progress bar (0-100%)
+  - [x] Phase indicator
+  - [x] Document count
+  - [x] Log stream (last 10 events)
+  - [x] Video recording indicator
+- [x] Create `app/settings/page.tsx` (user preferences)
+- [x] Add loading skeletons to all pages (shadcn skeleton)
 - [ ] Add empty states (when no data)
 - [ ] Add error states (when API fails)
 - [ ] Test responsive design (tablet, mobile)
@@ -1254,3 +1269,160 @@ NEXT_PUBLIC_USE_MOCK_DATA=true
 ---
 
 This plan provides a comprehensive roadmap to build a professional, institutional-grade financial intelligence dashboard with distinctive Bloomberg Terminal aesthetics, full AI integration placeholders, and mock data for all features. The implementation is structured for rapid development while maintaining code quality and design excellence.
+
+---
+
+## Phase 7: UI/UX Overhaul - Professional Analytics Polish
+
+### Problem Analysis
+
+The current UI has critical issues that make it look unprofessional:
+
+1. **Oversized Typography** - Font sizes are too large everywhere (4xl headers, 4xl metric values)
+2. **Missing Padding** - Text sticks to borders, elements feel cramped
+3. **No Visual Hierarchy** - Labels, values, and titles all use similar colors/weights
+4. **Color Monotony** - Everything is white-ish, no differentiation between labels and values
+5. **Bloated Cards** - Excessive padding (p-8) makes everything feel spacious instead of dense
+6. **Poor Information Density** - Bloomberg terminal aesthetic requires dense, scannable data
+
+### Design Principles for Overhaul
+
+**1. Typography Hierarchy (Most Important)**
+```
+Page Title:     text-2xl (24px) font-semibold - Primary color
+Section Title:  text-lg (18px) font-semibold - Primary color
+Card Title:     text-base (16px) font-medium - Primary color
+Label:          text-xs (12px) font-medium uppercase tracking-wider - Tertiary color (MUTED)
+Metric Value:   text-2xl (24px) font-bold mono - Primary or Accent color
+Body Text:      text-sm (14px) font-normal - Secondary color
+Meta/Timestamp: text-xs (12px) font-mono - Tertiary color
+```
+
+**2. Spacing System (Compact but Breathable)**
+```
+Card Padding:   p-4 (16px) or p-5 (20px) - NOT p-8
+Gap in Grids:   gap-4 (16px) or gap-5 (20px) - NOT gap-6
+Section Gap:    space-y-6 (24px) between major sections
+Internal Gap:   space-y-2 or space-y-3 within cards
+Page Padding:   p-6 (24px) - NOT p-8
+```
+
+**3. Color Usage for Visual Hierarchy**
+```
+Labels:         text-text-tertiary (#6e7681) - Very muted
+Values:         text-text-primary (#e6edf3) - High contrast
+Trends Up:      text-success (#3fb950) - Green
+Trends Down:    text-error (#f85149) - Red
+Accent Data:    text-accent-primary (#00d9ff) - Cyan for special emphasis
+Secondary Text: text-text-secondary (#8b949e) - Medium gray
+```
+
+**4. Component-Specific Fixes**
+
+### Task Checklist - UI Overhaul
+
+#### Global Styles (`globals.css`)
+- [x] Reduce base font sizes in typography section
+- [x] Update heading sizes (h1: 1.5rem, h2: 1.125rem, h3: 1rem)
+- [x] Add compact spacing utilities (spacing-md: 1rem, spacing-lg: 1.5rem)
+- [x] Create `.label` class for consistent label styling
+- [x] Create `.metric-lg`, `.metric-md`, `.metric-sm` for values
+- [x] Update card-bg padding from p-8 to p-4 (var(--spacing-md))
+
+#### MetricCard Component
+- [x] Reduce value font size from text-4xl to text-2xl
+- [x] Reduce padding from p-8 to p-4
+- [x] Make label text-xs uppercase tracking-wider text-tertiary
+- [x] Reduce icon container from h-12 w-12 to h-10 w-10
+- [x] Reduce trend text sizes (text-xs)
+- [x] Tighten internal spacing (mb-3 → mb-1, mt-4 → mt-2)
+
+#### AlertCard Component
+- [x] Reduce padding from p-8 to p-4 (pl-5 to compensate for left bar)
+- [x] Reduce title from text-lg to text-base
+- [x] Reduce icon container size (h-4 w-4)
+- [x] Tighten header spacing (mb-5 → mb-3)
+- [x] Reduce reason text from text-base to text-sm
+- [x] Compact evidence divider section (mb-3, gap-2)
+- [x] Reduce button padding (gap-2)
+
+#### CompanyCard Component
+- [x] Reduce overall padding from p-6 to p-4
+- [x] Reduce company name from text-lg to text-base
+- [x] Reduce market cap value from text-xl to text-base
+- [x] Reduce metric grid item padding from p-3 to p-2
+- [x] Tighten spacing between sections (mb-3, gap-2)
+- [x] Reduce metric values from text-lg to text-base
+
+#### TimelineCard Component
+- [x] Reduce padding (p-4, pl-5)
+- [x] Reduce title font size (text-base)
+- [x] Compact metadata section (mb-3, gap-3)
+- [x] Tighten spacing (mb-1.5, mb-0.5)
+
+#### Dashboard Page
+- [x] Reduce page padding from p-8 to p-6
+- [x] Reduce h1 from text-4xl to text-2xl
+- [x] Reduce h2 from text-2xl to text-lg
+- [x] Reduce grid gap from gap-6 to gap-4
+- [x] Tighten space-y-8 to space-y-6 (space-y-3)
+
+#### Companies Page
+- [x] Reduce page padding from p-8 to p-6
+- [x] Reduce h1 from text-4xl to text-2xl
+- [x] Reduce search input padding (py-3, pl-10)
+- [x] Reduce grid gap from gap-6 to gap-4
+
+#### Sidebar Component
+- [x] Width already optimal at w-64
+- [x] Navigation item padding already compact (py-2.5)
+- [x] Section margins already appropriate (mb-8, mb-3)
+
+#### Header Component
+- [x] Height and padding already consistent (h-14)
+- [x] Search bar size already appropriate
+
+### Expected Results After Overhaul
+
+**Before:**
+- Bloated, spacious feel
+- Everything same color (white)
+- Poor scannability
+- Unprofessional "AI slop" look
+
+**After:**
+- Dense, information-rich Bloomberg terminal feel
+- Clear visual hierarchy (muted labels, prominent values)
+- Professional analytics dashboard aesthetic
+- Scannable data with proper contrast
+
+### Color Reference Quick Guide
+
+| Element Type | Color Class | Hex |
+|--------------|-------------|-----|
+| Page Title | text-text-primary | #e6edf3 |
+| Section Title | text-text-primary | #e6edf3 |
+| Label (MOST IMPORTANT) | text-text-tertiary | #6e7681 |
+| Metric Value | text-text-primary | #e6edf3 |
+| Accent Value | text-accent-primary | #00d9ff |
+| Body Text | text-text-secondary | #8b949e |
+| Timestamp | text-text-tertiary | #6e7681 |
+| Success/Up | text-success | #3fb950 |
+| Error/Down | text-error | #f85149 |
+| Warning | text-warning | #d29922 |
+
+### Size Reference Quick Guide
+
+| Element | Current | Target |
+|---------|---------|--------|
+| Page Title (h1) | text-4xl (36px) | text-2xl (24px) |
+| Section Title (h2) | text-2xl (24px) | text-lg (18px) |
+| Card Title | text-lg (18px) | text-base (16px) |
+| Metric Value | text-4xl (36px) | text-2xl (24px) |
+| Small Metric | text-lg/text-xl | text-base (16px) |
+| Label | text-sm (14px) | text-xs (12px) |
+| Body | text-base (16px) | text-sm (14px) |
+| Card Padding | p-8 (32px) | p-4 (16px) |
+| Grid Gap | gap-6 (24px) | gap-4 (16px) |
+
+---

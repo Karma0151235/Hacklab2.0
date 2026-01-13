@@ -1,5 +1,21 @@
-</installer>
-only use pnpm
+<default>
+Use pnpm exclusively. Do not use npm or yarn under any circumstances.
+
+Task Workflow:
+
+After completing each task, immediately update @IMPLEMENTATION.md to reflect the completed work.
+
+Once the update is done, proceed to the next undone task without skipping steps.
+
+File Safety Rule:
+
+Always verify that a file exists before importing or referencing it.
+
+If a file does not exist, it must be explicitly created or the import must be avoided.
+
+Compliance Requirement:
+These rules are mandatory and must be followed for every task without exception.
+</default>
 
 <use_interesting_fonts>
 Typography instantly signals quality. Avoid using boring, generic fonts.
