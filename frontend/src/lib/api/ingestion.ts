@@ -217,3 +217,66 @@ export async function cancelIngestionJob(jobId: string): Promise<IngestionJob> {
 
   return job
 }
+
+// ============================================================================
+// PDF ETL Pipeline API
+// ============================================================================
+
+export interface PDFUploadResponse {
+  job_id: string
+  status: string
+  message: string
+  files_received: number
+  filenames: string[]
+}
+
+export interface PDFProcessingStatus {
+  job_id: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  total_files: number
+  processed_files: number
+  text_chunks_loaded: number
+  table_chunks_loaded: number
+  errors: string[]
+}
+
+/**
+ * Upload PDFs to ETL pipeline
+ * Connects to the backend API at http://localhost:8000/api/v1/ingest/pdfs
+ */
+export async function uploadPDFsForETL(files: File[]): Promise<PDFUploadResponse> {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+
+  const formData = new FormData()
+  files.forEach((file) => {
+    formData.append('files', file)
+  })
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/ingest/pdfs`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
+    throw new Error(error.detail || `Upload failed with status ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Get ETL job status
+ * Polls the backend API for job processing status
+ */
+export async function getETLJobStatus(jobId: string): Promise<PDFProcessingStatus> {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/ingest/status/${jobId}`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to get job status: ${response.statusText}`)
+  }
+
+  return response.json()
+}

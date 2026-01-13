@@ -91,27 +91,62 @@ class PDFExtractor:
         try:
             import pandas as pd
 
-            # Try stream mode first (better for financial reports)
-            dfs = self.tabula.read_pdf(
-                str(pdf_path),
-                pages="all",
-                multiple_tables=True,
-                stream=True
-            )
-
-            if not dfs:
-                # Fallback to lattice mode
+            # Try different extraction strategies
+            dfs = None
+            
+            # Strategy 1: Stream mode without encoding (let tabula handle it)
+            try:
                 dfs = self.tabula.read_pdf(
                     str(pdf_path),
                     pages="all",
                     multiple_tables=True,
-                    lattice=True
+                    stream=True
                 )
+            except Exception as e:
+                logger.debug(f"Stream mode failed: {str(e)}")
+            
+            # Strategy 2: Lattice mode if stream failed
+            if not dfs:
+                try:
+                    dfs = self.tabula.read_pdf(
+                        str(pdf_path),
+                        pages="all",
+                        multiple_tables=True,
+                        lattice=True
+                    )
+                except Exception as e:
+                    logger.debug(f"Lattice mode failed: {str(e)}")
+            
+            # Strategy 3: Try with explicit latin-1 encoding (common in financial docs)
+            if not dfs:
+                try:
+                    dfs = self.tabula.read_pdf(
+                        str(pdf_path),
+                        pages="all",
+                        multiple_tables=True,
+                        stream=True,
+                        encoding='latin-1'
+                    )
+                except Exception as e:
+                    logger.debug(f"Latin-1 encoding failed: {str(e)}")
+
+            if not dfs:
+                logger.warning("No tables found in PDF")
+                return []
 
             tables = []
             for df in dfs:
-                # Convert DataFrame to list of lists
-                table = [df.columns.tolist()] + df.values.tolist()
+                # Convert DataFrame to list of lists with safe encoding handling
+                # First, convert column names to strings, handling encoding issues
+                columns = [self._safe_str(col) for col in df.columns]
+                
+                # Then convert each row, handling encoding issues in cell values
+                rows = []
+                for row in df.values:
+                    safe_row = [self._safe_str(cell) for cell in row]
+                    rows.append(safe_row)
+                
+                table = [columns] + rows
                 tables.append(table)
 
             return tables
@@ -119,6 +154,29 @@ class PDFExtractor:
         except Exception as e:
             logger.warning(f"Table extraction failed: {str(e)}")
             return []
+    
+    def _safe_str(self, value) -> str:
+        """Safely convert a value to string, handling encoding issues"""
+        # Handle None and NaN values
+        if value is None:
+            return ""
+        
+        # Check for NaN (float type)
+        try:
+            import math
+            if isinstance(value, float) and math.isnan(value):
+                return ""
+        except (TypeError, ValueError):
+            pass
+        
+        try:
+            # Convert to string
+            s = str(value)
+            # Encode to UTF-8 and decode, replacing invalid characters
+            return s.encode('utf-8', errors='replace').decode('utf-8')
+        except Exception:
+            # If all else fails, return empty string
+            return ""
 
     def _get_page_count(self, pdf_path: Path) -> int:
         """Get number of pages in PDF"""
