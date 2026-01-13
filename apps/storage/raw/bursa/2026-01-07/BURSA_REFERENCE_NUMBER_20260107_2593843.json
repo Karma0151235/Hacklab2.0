@@ -1,0 +1,133 @@
+{
+  "structured_record": {
+    "announcement_id": "2593843",
+    "company_code": "Reference Number",
+    "announcement_date": "07 Jan 2026",
+    "category": "General",
+    "title": "New Securities Commission Malaysia Fee On Bursa, And Revision To Selected Listing And Regulatory-related Fees Charged By Bursa",
+    "detail_page_url": "https://bursa-bm.listedcompany.com/news.html/id/2593843",
+    "pdf_urls": [],
+    "tables_count": 3,
+    "table_titles": [
+      "Unnamed Table",
+      "Announcement Info",
+      "Unnamed Table"
+    ],
+    "numeric_fields": {},
+    "extracted_at": "2026-01-13T17:43:52.535998",
+    "source": "bursa-bm"
+  },
+  "document_object": {
+    "doc_id": "bursa_2593843_1768297432",
+    "announcement_id": "2593843",
+    "company_code": "Reference Number",
+    "source": "bursa-bm",
+    "doc_type": "announcement",
+    "category": "General",
+    "title": "New Securities Commission Malaysia Fee On Bursa, And Revision To Selected Listing And Regulatory-related Fees Charged By Bursa",
+    "raw_text": "Bursa Malaysia\nBursa Anywhere\nBursa Assist\nExplore MyBURSA\nInfo Pasaran\nDagangan\nPenyenaraian\nPeraturan\nRujukan\nMengenai Kami\nMarket Summary\nPengumuman Syarikat\nBM\nSearch\nEnglish\nBahasa Malaysia\n简体中文\n\nBerita\n\nPerhubungan Pelabur\nMaklumat Kewangan\nMaklumat Saham\nPegangan Saham\nInformasi Pemegang Saham\nPermintaan Maklumat\nMaklumat Lain\nHome\n About Bursa\n Investor Relations\nNews\nNews\nNew Securities Commission Malaysia Fee On Bursa, And Revision To Selected Listing And Regulatory-related Fees Charged By Bursa\nBack\nJan 07, 2026\n\n \n\nType\tAnnouncement\nSubject\tOTHERS\n\nDescription\tNEW SECURITIES COMMISSION MALAYSIA FEE ON BURSA, AND REVISION TO SELECTED LISTING AND REGULATORY-RELATED FEES CHARGED BY BURSA\n\nThe terms used herein shall, unless the context otherwise states, have the same meaning as those defined in the previous announcements, where applicable.\n\nReference is made to the Company’s earlier announcements dated 17 October 2025, 30 October 2025 and 5 January 2026 in relation to the SC Fee revision.\n\nAs stated in the Company’s announcement dated 5 January 2026 (under Part B, in the 2nd paragraph), Bursa will remit derivatives levy to the SC from the amount collected from the trading and clearing fees of the derivatives contracts for 3 years until 2028. The Company wishes to clarify that post 2028, the amount of remittance will be reviewed by the SC prior to the expiry of the aforesaid three years.\n\n\nThis announcement is dated 7 January 2026.\n\n \n\nAnnouncement Info\nCompany Name\tBURSA MALAYSIA BERHAD\nStock Name\tBURSA\nDate Announced\t07 Jan 2026\nCategory\tGeneral Announcement for PLC\nReference Number\tGA1-07012026-00013\nTerma-terma dan Syarat-Syarat Penggunaan, Penolakan tuntutan dan Polisi Pautan\nNotis Data Peribadi\nPeta Laman\nWebsite FAQs\nPerhubungan\nBursa Assist\nFollow Us\nCopyright © 2024 Bursa Malaysia Berhad 197601004668 (30632-P). All rights reserved.\nTop",
+    "tables": [
+      {
+        "title": "Unnamed Table",
+        "headers": [
+          "Type",
+          "Announcement"
+        ],
+        "rows": [
+          {
+            "Type": "Type",
+            "Announcement": "Announcement"
+          },
+          {
+            "Type": "Subject",
+            "Announcement": "OTHERS"
+          },
+          {
+            "Type": "Description",
+            "Announcement": "NEW SECURITIES COMMISSION MALAYSIA FEE ON BURSA, AND REVISION TO SELECTED LISTING AND REGULATORY-RELATED FEES CHARGED BY BURSA"
+          },
+          {
+            "Type": "The terms used herein shall, unless the context otherwise states, have the same meaning as those defined in the previous announcements, where applicable.\n\nReference is made to the Company’s earlier announcements dated 17 October 2025, 30 October 2025 and 5 January 2026 in relation to the SC Fee revision.\n\nAs stated in the Company’s announcement dated 5 January 2026 (under Part B, in the 2nd paragraph), Bursa will remit derivatives levy to the SC from the amount collected from the trading and clearing fees of the derivatives contracts for 3 years until 2028. The Company wishes to clarify that post 2028, the amount of remittance will be reviewed by the SC prior to the expiry of the aforesaid three years.\n\n\nThis announcement is dated 7 January 2026."
+          }
+        ]
+      },
+      {
+        "title": "Announcement Info",
+        "headers": [
+          "Company Name",
+          "BURSA MALAYSIA BERHAD"
+        ],
+        "rows": [
+          {
+            "Company Name": "Company Name",
+            "BURSA MALAYSIA BERHAD": "BURSA MALAYSIA BERHAD"
+          },
+          {
+            "Company Name": "Stock Name",
+            "BURSA MALAYSIA BERHAD": "BURSA"
+          },
+          {
+            "Company Name": "Date Announced",
+            "BURSA MALAYSIA BERHAD": "07 Jan 2026"
+          },
+          {
+            "Company Name": "Category",
+            "BURSA MALAYSIA BERHAD": "General Announcement for PLC"
+          },
+          {
+            "Company Name": "Reference Number",
+            "BURSA MALAYSIA BERHAD": "GA1-07012026-00013"
+          }
+        ]
+      },
+      {
+        "title": "Unnamed Table",
+        "headers": [
+          "",
+          "Subscribe",
+          "Media Releases",
+          "Subscribe"
+        ],
+        "rows": [
+          {
+            "Column_0": "Media Releases",
+            "Subscribe": "Subscribe"
+          },
+          {
+            "Column_0": "Investor Relations\n                      \n                        Newsroom",
+            "Subscribe": "Subscribe"
+          },
+          {
+            "Column_0": "Bursa Malaysia Listing Requirements\n                      \n                        Main Market\n                        ACE Market",
+            "Subscribe": "Subscribe"
+          },
+          {
+            "Column_0": "Initial Public Offering",
+            "Subscribe": "Subscribe"
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "unnamed_table_rows_count": 4,
+      "announcement_info_rows_count": 5
+    },
+    "announcement_date": "07 Jan 2026",
+    "extracted_at": "2026-01-13T17:43:52.536092",
+    "source_url": "https://bursa-bm.listedcompany.com/news.html/id/2593843",
+    "pdf_urls": [],
+    "keywords": [
+      "Pengumuman",
+      "Saham",
+      "Assist",
+      "On",
+      "News",
+      "Listing",
+      "Commission",
+      "Bahasa",
+      "Charge",
+      "Charged"
+    ],
+    "summary": "Bursa Malaysia\nBursa Anywhere\nBursa Assist\nExplore MyBURSA\nInfo Pasaran\nDagangan\nPenyenaraian\nPeraturan\nRujukan\nMengenai Kami\nMarket Summary\nPengumuman Syarikat\nBM\nSearch\nEnglish\nBahasa Malaysia\n简体中文\n..."
+  }
+}

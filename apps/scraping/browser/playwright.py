@@ -1,119 +1,60 @@
-"""
-Playwright Browser Management
-
-Implements Playwright-based browser automation with:
-- Anti-bot detection
-- Video recording (WebM)
-- Bounding box visualization
-- Real-time progress tracking
-
-Reference: BursaWebScraper.md
-"""
-
-import asyncio
-import base64
-import os
-import tempfile
-from typing import Callable, Optional, Dict, Any
-from pathlib import Path
-from datetime import datetime
-from loguru import logger
-
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-
+import os
+import base64
+from typing import Optional, Dict
 
 class PlaywrightBrowser:
-    """Manage Playwright browser lifecycle with video recording."""
+    def __init__(self, video_dir: str = "/tmp/scrape_video_bursa"):
+        self.video_dir = video_dir
+        self.playwright = None
+        self.browser: Optional[Browser] = None
+        self.context: Optional[BrowserContext] = None
+        self.page: Optional[Page] = None
 
-    def __init__(
-        self,
-        headless: bool = True,
-        viewport_width: int = 1920,
-        viewport_height: int = 1080,
-        video_dir: Optional[str] = None,
-        progress_callback: Optional[Callable] = None,
-    ):
-        """
-        Initialize Playwright browser configuration.
-
-        Args:
-            headless: Run in headless mode (production)
-            viewport_width: Browser viewport width
-            viewport_height: Browser viewport height
-            video_dir: Directory to store video recordings
-            progress_callback: Async callback for progress updates
-        """
-        self.headless = headless
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
-        self.video_dir = video_dir or tempfile.mkdtemp(prefix="scrape_video_")
-        self.progress_callback = progress_callback
-        self.logger = logger
-
-        # Ensure video directory exists
-        Path(self.video_dir).mkdir(parents=True, exist_ok=True)
-
-    async def launch(self) -> Browser:
-        """
-        Launch Chromium browser with anti-detection settings.
-
-        Returns:
-            Playwright Browser instance
-        """
-        await self._emit_progress("loading", 10, "Launching Chromium browser...")
-
-        p = await async_playwright().start()
-
-        browser = await p.chromium.launch(
-            headless=self.headless,
+    async def launch(self, headless: bool = True) -> Browser:
+        self.playwright = await async_playwright().start()
+        self.browser = await self.playwright.chromium.launch(
+            headless=headless,
             args=[
-                "--disable-blink-features=AutomationControlled",  # Hide automation flag
-                "--no-sandbox",  # Allow in containers
-                "--disable-dev-shm-usage",  # Fix for Docker/Linux
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--enable-maximized-feature" # For window management
             ],
         )
+        return self.browser
 
-        self.logger.info("Browser launched successfully")
-        return browser
+    async def create_context(self) -> BrowserContext:
+        if not self.browser:
+            await self.launch()
 
-    async def create_context(self, browser: Browser, locale: str = "en-MY") -> BrowserContext:
-        """
-        Create browser context with video recording.
+        # Ensure video dir exists
+        if not os.path.exists(self.video_dir):
+            try:
+                os.makedirs(self.video_dir)
+            except OSError:
+                pass # Ignore if exists
 
-        Args:
-            browser: Playwright Browser instance
-            locale: Browser locale (en-MY for Malaysia)
-
-        Returns:
-            BrowserContext with recording enabled
-        """
-        await self._emit_progress("loading", 20, "Configuring video recording...")
-
-        context = await browser.new_context(
+        self.context = await self.browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/120.0.0.0 Safari/537.36"
             ),
-            locale=locale,
-            viewport={"width": self.viewport_width, "height": self.viewport_height},
+            locale="en-MY",
+            viewport={"width": 1920, "height": 1080},
             record_video_dir=self.video_dir,
-            record_video_size={"width": self.viewport_width, "height": self.viewport_height},
+            record_video_size={"width": 1920, "height": 1080},
         )
+        self.page = await self.context.new_page()
+        return self.context
 
-        self.logger.info(f"Browser context created with video recording to {self.video_dir}")
-        return context
+    async def inject_bounding_box_helpers(self) -> None:
+        """Inject JavaScript utilities for bounding box drawing."""
+        if not self.page:
+            return
 
-    async def inject_bounding_box_helpers(self, page: Page) -> None:
-        """
-        Inject JavaScript utilities for bounding box drawing.
-
-        Adds window.drawBoundingBox() and window.clearAllBoxes() functions.
-        Ref: WebScraper.md § Bounding Box System
-        """
-        await self._emit_progress("loading", 25, "Injecting bounding box utilities...")
-
-        await page.evaluate("""() => {
+        await self.page.evaluate("""() => {
             window.scraperBoxes = [];
 
             window.drawBoundingBox = function(element, color = '#3b82f6', label = '', persistent = true) {
@@ -175,129 +116,64 @@ class PlaywrightBrowser:
             };
         }""")
 
-        self.logger.info("Bounding box helpers injected")
-
-    async def navigate(self, page: Page, url: str, timeout: int = 30000) -> None:
+    async def finalize_video(self) -> str:
         """
-        Navigate to URL with timeout handling.
-
-        Args:
-            page: Playwright Page instance
-            url: Target URL
-            timeout: Navigation timeout in ms
+        Close context to finalize WebM video, encode to base64.
         """
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-            await page.wait_for_timeout(2000)  # Stabilization delay
-            self.logger.info(f"Navigated to {url}")
-        except Exception as e:
-            self.logger.warning(f"Navigation to {url} timed out: {e}")
-            # Graceful degradation - continue with partial content
-
-    async def finalize_video(self, context: BrowserContext) -> str:
-        """
-        Finalize video recording and return base64 encoded WebM.
-
-        Critical: Closing context triggers WebM finalization.
-
-        Args:
-            context: BrowserContext with active video recording
-
-        Returns:
-            Base64-encoded video string (or empty if too large)
-        """
-        await self._emit_progress("finalizing", 92, "Finalizing video recording...")
-
         video_base64 = ""
-        MAX_VIDEO_SIZE = 30 * 1024 * 1024  # 30MB limit for gRPC
+        MAX_VIDEO_SIZE = 30 * 1024 * 1024  # 30MB limit
+        
+        video_path = None
+        if self.page:
+            video_obj = self.page.video
+            if video_obj:
+                try:
+                    video_path = await video_obj.path()
+                except:
+                    pass
 
-        try:
-            # Close context to finalize video
-            await context.close()
+        if self.context:
+            await self.context.close()
+            self.context = None
+            
+        if self.browser:
+            await self.browser.close()
+            self.browser = None
+            
+        if self.playwright:
+            await self.playwright.stop()
+            self.playwright = None
 
-            # Find the WebM file
-            video_files = list(Path(self.video_dir).glob("*.webm"))
-            if not video_files:
-                self.logger.warning("No video file found after context close")
-                return ""
-
-            video_path = video_files[0]
-            file_size = video_path.stat().st_size
-
-            if file_size > MAX_VIDEO_SIZE:
-                self.logger.warning(f"Video too large ({file_size / 1024 / 1024:.1f}MB), skipping")
-                return ""
-
-            # Encode to base64
-            with open(video_path, "rb") as f:
-                video_bytes = f.read()
-
-            video_base64 = base64.b64encode(video_bytes).decode("utf-8")
-            self.logger.info(f"Video encoded: {len(video_base64)} chars ({file_size / 1024 / 1024:.1f}MB)")
-
-        except Exception as e:
-            self.logger.error(f"Error finalizing video: {e}", exc_info=True)
-
+        # Encode video to base64 if it exists and is not too large
+        if video_path and os.path.exists(video_path):
+            try:
+                file_size = os.path.getsize(video_path)
+                if file_size > MAX_VIDEO_SIZE:
+                    print(f"⚠️  Video too large ({file_size / 1024 / 1024:.1f}MB), skipping base64 encoding")
+                elif file_size > 0:
+                    with open(video_path, "rb") as f:
+                        video_bytes = f.read()
+                    video_base64 = base64.b64encode(video_bytes).decode("utf-8")
+                    print(f"✅ Video encoded: {file_size / 1024 / 1024:.1f}MB")
+            except Exception as e:
+                print(f"⚠️  Error encoding video: {e}")
+                
         return video_base64
 
-    async def _emit_progress(self, phase: str, percent: int, message: str) -> None:
-        """Emit progress update via callback."""
-        if not self.progress_callback:
-            return
-
-        try:
-            await self.progress_callback(
-                phase=phase,
-                progress_percent=percent,
-                status_message=message,
-                metadata={}
-            )
-        except Exception as e:
-            self.logger.warning(f"Progress callback failed: {e}")
-
-
 class BrowserSession:
-    """Context manager for browser session with automatic cleanup."""
-
-    def __init__(self, playwright_config: PlaywrightBrowser):
-        self.config = playwright_config
-        self.playwright = None
-        self.browser = None
-        self.context = None
-        self.page = None
-        self.logger = logger
+    """Context manager for easy browser lifecycle management"""
+    def __init__(self, video_dir: str = "/tmp/scrape_video_bursa"):
+        self.browser = PlaywrightBrowser(video_dir)
 
     async def __aenter__(self):
-        """Launch browser and create context."""
-        self.playwright = await async_playwright().start()
-        self.browser = await self.config.launch()
-        self.context = await self.config.create_context(self.browser)
-        self.page = await self.context.new_page()
-
-        await self.config.inject_bounding_box_helpers(self.page)
-
-        return self
+        await self.browser.launch(headless=True) # Default to headless
+        await self.browser.create_context()
+        await self.browser.inject_bounding_box_helpers()
+        return self.browser
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Cleanup: close context (finalizes video), then browser."""
-        try:
-            if self.page:
-                # Clear boxes before closing
-                await self.page.evaluate("window.clearAllBoxes()")
-                await self.page.close()
-
-            if self.context:
-                await self.context.close()  # CRITICAL: Finalizes video!
-
-            if self.browser:
-                await self.browser.close()
-
-            if self.playwright:
-                await self.playwright.stop()
-
-            self.logger.info("Browser session closed and cleaned up")
-
-        except Exception as e:
-            self.logger.error(f"Error during cleanup: {e}", exc_info=True)
-
-        return False  # Don't suppress exceptions
+        if exc_type:
+             # If error, try to capture video anyway? 
+             # finalize_video closes context/browser
+             pass
+        await self.browser.finalize_video()
