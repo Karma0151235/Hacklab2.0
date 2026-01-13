@@ -110,9 +110,6 @@ log/
 *.db
 *.sqlite
 *.sqlite3
-postgres_data/
-mysql_data/
-mongodb_data/
 
 # Storage & Media
 media/
