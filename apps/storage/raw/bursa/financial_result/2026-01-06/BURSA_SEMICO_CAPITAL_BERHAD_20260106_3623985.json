@@ -1,0 +1,77 @@
+{
+  "structured_record": {
+    "announcement_id": "3623985",
+    "company_code": "SEMICO CAPITAL BERHAD",
+    "announcement_date": "06 Jan 2026",
+    "category": "Financial Result",
+    "title": "Quarterly rpt on consolidated results for the financial period ended 30/09/2025",
+    "detail_page_url": "https://www.bursamalaysia.com/market_information/announcements/company_announcement/announcement_details?ann_id=3623985",
+    "pdf_urls": [],
+    "tables_count": 1,
+    "table_titles": [
+      "Unnamed Table"
+    ],
+    "numeric_fields": {},
+    "extracted_at": "2026-01-13T20:16:47.946574",
+    "source": "bursa-bm"
+  },
+  "document_object": {
+    "doc_id": "bursa_announcement_details?ann_id=3623985_1768306607",
+    "announcement_id": "announcement_details?ann_id=3623985",
+    "company_code": "SEMICO CAPITAL BERHAD",
+    "source": "bursa-bm",
+    "doc_type": "announcement",
+    "category": "Financial Result",
+    "title": "Quarterly rpt on consolidated results for the financial period ended 30/09/2025",
+    "raw_text": "Bursa Malaysia\nBursa Anywhere\nBursa Assist\nExplore MyBURSA\nMarket Information\nTrade\nListing\nRegulation\nReference\nAbout Bursa\nMarket Summary\nCompany Announcements\nEN\nSearch\nEnglish\nBahasa Malaysia\n简体中文\nHome\n Market Information\n Announcements\n Company Announcements\nAnnouncement details\nAnnouncement details\nPrint\nBack\nRead More\nTerms & Conditions of Use, Disclaimer and Linking Policy\nPersonal Data Notice\nSitemap\nWebsite FAQs\nContact Us\nBursa Assist\nFollow Us\nCopyright © 2026 Bursa Malaysia Berhad 197601004668 (30632-P). All rights reserved.",
+    "tables": [
+      {
+        "title": "Unnamed Table",
+        "headers": [
+          "",
+          "Subscribe",
+          "Media Releases",
+          "Subscribe"
+        ],
+        "rows": [
+          {
+            "Column_0": "Media Releases",
+            "Subscribe": "Subscribe"
+          },
+          {
+            "Column_0": "Investor Relations\n                  \n                    Newsroom",
+            "Subscribe": "Subscribe"
+          },
+          {
+            "Column_0": "Bursa Malaysia Listing Requirements\n                  \n                    Main Market\n                    ACE Market",
+            "Subscribe": "Subscribe"
+          },
+          {
+            "Column_0": "Initial Public Offering",
+            "Subscribe": "Subscribe"
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "unnamed_table_rows_count": 4
+    },
+    "announcement_date": "06 Jan 2026",
+    "extracted_at": "2026-01-13T20:16:47.946620",
+    "source_url": "https://www.bursamalaysia.com/market_information/announcements/company_announcement/announcement_details?ann_id=3623985",
+    "pdf_urls": [],
+    "keywords": [
+      "Follow",
+      "Print",
+      "Search",
+      "Malaysia",
+      "Market",
+      "Announcements",
+      "Bursa",
+      "Trade",
+      "Summary",
+      "Notice"
+    ],
+    "summary": "Bursa Malaysia\nBursa Anywhere\nBursa Assist\nExplore MyBURSA\nMarket Information\nTrade\nListing\nRegulation\nReference\nAbout Bursa\nMarket Summary\nCompany Announcements\nEN\nSearch\nEnglish\nBahasa Malaysia\n简体中文..."
+  }
+}
