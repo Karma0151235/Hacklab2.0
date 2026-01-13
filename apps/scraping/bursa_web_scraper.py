@@ -152,16 +152,27 @@ class BursaWebScraper:
                 except:
                     pass
                 
-                # Extract tables and text
+                # Extract tables from main page
                 tables_data = await parser.extract_tables(page)
+                print(f"  Main page: {len(tables_data)} tables")
+                
+                # Extract tables from iframes (where financial data is)
+                iframe_tables = await parser.extract_iframe_tables(page)
+                print(f"  Iframes: {len(iframe_tables)} tables")
+                
+                # Merge all tables
+                all_tables = tables_data + iframe_tables
+                print(f"  Total tables: {len(all_tables)}")
+                
                 raw_text = await parser.extract_all_text(page)
                 
-                # Highlight tables
-                await parser.highlight_tables(page, tables_data)
+                # Highlight ALL tables (including iframe tables)
+                await parser.highlight_tables(page, all_tables)
                 
-                # Create dual outputs
-                structured_record = self._create_structured_record(announcement, tables_data)
-                document_object = self._create_document_object(announcement, tables_data, raw_text)
+                # Create dual outputs with all tables
+                structured_record = self._create_structured_record(announcement, all_tables)
+                document_object = self._create_document_object(announcement, all_tables, raw_text)
+
                 
                 self.structured_records.append(structured_record)
                 self.document_objects.append(document_object)
