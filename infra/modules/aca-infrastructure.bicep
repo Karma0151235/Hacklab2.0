@@ -28,15 +28,6 @@ param appInsightsConnectionString string
 @description('Whether to collect telemetry')
 param azureMcpCollectTelemetry string
 
-@description('Azure AD Tenant ID')
-param azureAdTenantId string
-
-@description('Azure AD Client ID')
-param azureAdClientId string
-
-@description('Azure AD authorization Server')
-param azureAdInstance string
-
 @description('Azure MCP Server namespaces to enable. Must specify at least one namespace and no more than three.')
 @minLength(1)
 @maxLength(3)
@@ -130,18 +121,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'AZURE_MCP_COLLECT_TELEMETRY'
               value: azureMcpCollectTelemetry
-            }
-            {
-              name: 'AzureAd__Instance'
-              value: azureAdInstance
-            }
-            {
-              name: 'AzureAd__TenantId'
-              value: azureAdTenantId
-            }
-            {
-              name: 'AzureAd__ClientId'
-              value: azureAdClientId
             }
             {
               name: 'AZURE_CLIENT_ID'

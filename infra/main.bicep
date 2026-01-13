@@ -4,12 +4,6 @@ param location string = resourceGroup().location
 @description('Name for the Azure Container App')
 param acaName string
 
-@description('Display name for the Server Entra App')
-param entraAppServerDisplayName string
-
-@description('Display name for the Client Entra App')
-param entraAppClientDisplayName string
-
 @description('Application Insights connection string. Use "DISABLED" to disable telemetry, or provide existing connection string. If omitted, new App Insights will be created.')
 param appInsightsConnectionString string = ''
 
@@ -25,31 +19,6 @@ module appInsights 'modules/application-insights.bicep' = {
   }
 }
 
-// Deploy Entra App
-var entraAppClientUniqueName = '${replace(toLower(entraAppClientDisplayName), ' ', '-')}-${uniqueString(resourceGroup().id)}'
-module entraAppClient 'modules/entra-app.bicep' = {
-  name: 'entra-app-client-deployment'
-  params: {
-    entraAppDisplayName: entraAppClientDisplayName
-    entraAppUniqueName: entraAppClientUniqueName
-    isServer: false
-  }
-}
-
-var entraAppServerUniqueName = '${replace(toLower(entraAppServerDisplayName), ' ', '-')}-${uniqueString(resourceGroup().id)}'
-module entraAppServer 'modules/entra-app.bicep' = {
-  name: 'entra-app-server-deployment'
-  params: {
-    entraAppDisplayName: entraAppServerDisplayName
-    entraAppUniqueName: entraAppServerUniqueName
-    isServer: true
-    entraAppScopeValue: 'Mcp.Tools.ReadWrite'
-    entraAppScopeDisplayName: 'Azure MCP Storage Tools ReadWrite'
-    entraAppScopeDescription: 'Azure MCP Storage Tools Permission to call tools'
-    knownClientAppId: entraAppClient.outputs.entraAppClientId
-  }
-}
-
 module acaStorageManagedIdentity 'modules/aca-storage-managed-identity.bicep' = {
   name: 'aca-storage-managed-identity-deployment'
   params: {
@@ -58,7 +27,7 @@ module acaStorageManagedIdentity 'modules/aca-storage-managed-identity.bicep' = 
   }
 }
 
-// Deploy ACA Infrastructure to host Azure MCP Server
+// Deploy ACA Infrastructure
 module acaInfrastructure 'modules/aca-infrastructure.bicep' = {
   name: 'aca-infrastructure-deployment'
   params: {
@@ -66,20 +35,9 @@ module acaInfrastructure 'modules/aca-infrastructure.bicep' = {
     location: location
     appInsightsConnectionString: appInsights.outputs.connectionString
     azureMcpCollectTelemetry: string(!empty(appInsights.outputs.connectionString))
-    azureAdTenantId: tenant().tenantId
-    azureAdClientId: entraAppServer.outputs.entraAppClientId
-    azureAdInstance: environment().authentication.loginEndpoint
-    namespaces: ['storage']
+    namespaces: ['storage'] // Kept for future use
     userAssignedManagedIdentityId: acaStorageManagedIdentity.outputs.managedIdentityId
     userAssignedManagedIdentityClientId: acaStorageManagedIdentity.outputs.managedIdentityClientId
-  }
-}
-
-module acaStorageRoleAssignment 'modules/aca-storage-subscription-role.bicep' = {
-  name: 'aca-storage-subscription-role-${location}'
-  scope: subscription()
-  params: {
-    managedIdentityPrincipalId: acaStorageManagedIdentity.outputs.managedIdentityPrincipalId
   }
 }
 
@@ -88,12 +46,6 @@ output AZURE_TENANT_ID string = tenant().tenantId
 output AZURE_SUBSCRIPTION_ID string = subscription().subscriptionId
 output AZURE_RESOURCE_GROUP string = resourceGroup().name
 output AZURE_LOCATION string = location
-
-// Entra App outputs
-output ENTRA_APP_SERVER_CLIENT_ID string = entraAppServer.outputs.entraAppClientId
-output ENTRA_APP_SERVER_SCOPE_ID string = entraAppServer.outputs.entraAppScopeId
-output ENTRA_APP_SERVER_SCOPE_VALUE string = entraAppServer.outputs.entraAppScopeValue
-output ENTRA_APP_CLIENT_CLIENT_ID string = entraAppClient.outputs.entraAppClientId
 
 // ACA Infrastructure outputs
 output CONTAINER_APP_URL string = acaInfrastructure.outputs.containerAppUrl
@@ -107,3 +59,18 @@ output CONTAINER_APP_MANAGED_IDENTITY_CLIENT_ID string = acaStorageManagedIdenti
 output APPLICATION_INSIGHTS_NAME string = appInsightsName
 output APPLICATION_INSIGHTS_CONNECTION_STRING string = appInsights.outputs.connectionString
 output AZURE_MCP_COLLECT_TELEMETRY string = string(!empty(appInsights.outputs.connectionString))
+
+// Azure AI Foundry
+module ai 'modules/ai-foundry.bicep' = {
+  name: 'ai-foundry-deployment'
+  params: {
+    location: location
+    name: acaName
+    applicationInsightsId: appInsights.outputs.appInsightsId
+  }
+}
+
+output AI_PROJECT_NAME string = ai.outputs.projectName
+output AI_PROJECT_CONNECTION_STRING string = ai.outputs.projectConnectionString
+output AZURE_OPENAI_ENDPOINT string = ai.outputs.openaiEndpoint
+output AZURE_OPENAI_NAME string = ai.outputs.openaiName

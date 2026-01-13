@@ -40,3 +40,6 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = if (sh
 output connectionString string = shouldCreate 
   ? (applicationInsights.?properties.ConnectionString ?? '') 
   : (isDisabled ? '' : appInsightsConnectionString)
+
+output appInsightsId string = shouldCreate ? applicationInsights.id : ''
+
