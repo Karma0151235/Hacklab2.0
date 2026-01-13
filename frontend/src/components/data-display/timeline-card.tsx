@@ -46,7 +46,7 @@ export function TimelineCard({
       {/* Left accent bar */}
       <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-accent-primary/50 to-accent-secondary/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
-      <div className="p-4 pl-5"> {/* Compact padding */}
+      <div className="p-8"> {/* Increased padding */}
         {/* Header */}
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex-1">

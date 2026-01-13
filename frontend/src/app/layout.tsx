@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { JetBrains_Mono, IBM_Plex_Sans } from 'next/font/google'
 import { Toaster } from 'sonner'
 import { AlertNotificationProvider } from '@/components/notifications/alert-notification-provider'
+import { AppShell } from '@/components/layout/app-shell'
+import { TestNotificationButton } from '@/components/notifications/test-notification-button'
 import "./globals.css";
 
 const jetbrainsMono = JetBrains_Mono({
@@ -32,7 +34,8 @@ export default function RootLayout({
     <html lang="en" className={`${jetbrainsMono.variable} ${ibmPlexSans.variable}`}>
       <body className="font-sans antialiased">
         <AlertNotificationProvider simulateAlerts={true} simulationIntervalMs={45000}>
-          {children}
+          <AppShell>{children}</AppShell>
+          <TestNotificationButton />
         </AlertNotificationProvider>
         <Toaster 
           position="top-right"

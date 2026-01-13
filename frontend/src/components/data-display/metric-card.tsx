@@ -70,7 +70,7 @@ export function MetricCard({
   return (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-[var(--radius)] border bg-gradient-to-br from-bg-tertiary to-bg-secondary p-4', // Compact padding
+        'group relative overflow-hidden rounded-[var(--radius)] border bg-gradient-to-br from-bg-tertiary to-bg-secondary', // No default padding
         'transition-all duration-300 hover:border-accent-primary/40 hover:shadow-[0_0_20px_rgba(0,217,255,0.1)]',
         styles.border,
         className
@@ -81,7 +81,7 @@ export function MetricCard({
         <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-accent-primary/5 blur-2xl" />
       </div>
 
-      <div className="relative flex items-start justify-between">
+      <div className="relative flex items-start justify-between p-6">
         <div className="flex-1">
           {/* Label - Muted for hierarchy */}
           <p className="mb-1 font-sans text-xs font-medium uppercase tracking-wider text-text-tertiary">

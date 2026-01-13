@@ -76,7 +76,7 @@ export default function AlertsPage() {
   }, [filteredAlerts])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-bg-primary via-bg-secondary to-bg-primary p-8">
+    <div className="min-h-screen bg-gradient-to-br from-bg-primary via-bg-secondary to-bg-primary">
       <div className="mx-auto max-w-7xl space-y-8">
         {/* Page Header */}
         <div className="flex items-start justify-between">

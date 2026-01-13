@@ -2,11 +2,11 @@ import { ChatWindow } from '@/components/copilot/chat-window'
 
 export default function CopilotPage() {
   return (
-    <div className="flex h-screen flex-col bg-gradient-to-br from-bg-primary via-bg-secondary to-bg-primary">
+    <div className="flex h-full flex-col">
       {/* Page Header */}
       <div className="border-b border-border-accent/20 bg-gradient-to-br from-bg-tertiary to-bg-secondary px-8 py-6">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-2 flex items-center gap-3">
+        <div className="mx-auto max-w-7xl text-center">
+          <div className="mb-2 flex items-center justify-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-primary/10">
               <svg
                 className="h-6 w-6 text-accent-primary"
@@ -34,8 +34,10 @@ export default function CopilotPage() {
       </div>
 
       {/* Chat Window */}
-      <div className="flex-1 overflow-hidden">
-        <ChatWindow />
+      <div className="flex flex-1 items-center justify-center overflow-hidden px-4">
+        <div className="h-full w-full max-w-5xl">
+          <ChatWindow />
+        </div>
       </div>
     </div>
   )
