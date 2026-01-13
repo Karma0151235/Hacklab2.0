@@ -1,0 +1,77 @@
+{
+  "structured_record": {
+    "announcement_id": "3623368",
+    "company_code": "BCM ALLIANCE BERHAD",
+    "announcement_date": "02 Jan 2026",
+    "category": "Financial Result",
+    "title": "Change in Financial Year End",
+    "detail_page_url": "https://www.bursamalaysia.com/market_information/announcements/company_announcement/announcement_details?ann_id=3623368",
+    "pdf_urls": [],
+    "tables_count": 1,
+    "table_titles": [
+      "Unnamed Table"
+    ],
+    "numeric_fields": {},
+    "extracted_at": "2026-01-13T20:16:50.547789",
+    "source": "bursa-bm"
+  },
+  "document_object": {
+    "doc_id": "bursa_announcement_details?ann_id=3623368_1768306610",
+    "announcement_id": "announcement_details?ann_id=3623368",
+    "company_code": "BCM ALLIANCE BERHAD",
+    "source": "bursa-bm",
+    "doc_type": "announcement",
+    "category": "Financial Result",
+    "title": "Change in Financial Year End",
+    "raw_text": "Bursa Malaysia\nBursa Anywhere\nBursa Assist\nExplore MyBURSA\nMarket Information\nTrade\nListing\nRegulation\nReference\nAbout Bursa\nMarket Summary\nCompany Announcements\nEN\nSearch\nEnglish\nBahasa Malaysia\n简体中文\nHome\n Market Information\n Announcements\n Company Announcements\nAnnouncement details\nAnnouncement details\nPrint\nBack\nRead More\nTerms & Conditions of Use, Disclaimer and Linking Policy\nPersonal Data Notice\nSitemap\nWebsite FAQs\nContact Us\nBursa Assist\nFollow Us\nCopyright © 2026 Bursa Malaysia Berhad 197601004668 (30632-P). All rights reserved.",
+    "tables": [
+      {
+        "title": "Unnamed Table",
+        "headers": [
+          "",
+          "Subscribe",
+          "Media Releases",
+          "Subscribe"
+        ],
+        "rows": [
+          {
+            "Column_0": "Media Releases",
+            "Subscribe": "Subscribe"
+          },
+          {
+            "Column_0": "Investor Relations\n                  \n                    Newsroom",
+            "Subscribe": "Subscribe"
+          },
+          {
+            "Column_0": "Bursa Malaysia Listing Requirements\n                  \n                    Main Market\n                    ACE Market",
+            "Subscribe": "Subscribe"
+          },
+          {
+            "Column_0": "Initial Public Offering",
+            "Subscribe": "Subscribe"
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "unnamed_table_rows_count": 4
+    },
+    "announcement_date": "02 Jan 2026",
+    "extracted_at": "2026-01-13T20:16:50.547828",
+    "source_url": "https://www.bursamalaysia.com/market_information/announcements/company_announcement/announcement_details?ann_id=3623368",
+    "pdf_urls": [],
+    "keywords": [
+      "Follow",
+      "Print",
+      "Search",
+      "Malaysia",
+      "Market",
+      "Change",
+      "Announcements",
+      "Bursa",
+      "Trade",
+      "End"
+    ],
+    "summary": "Bursa Malaysia\nBursa Anywhere\nBursa Assist\nExplore MyBURSA\nMarket Information\nTrade\nListing\nRegulation\nReference\nAbout Bursa\nMarket Summary\nCompany Announcements\nEN\nSearch\nEnglish\nBahasa Malaysia\n简体中文..."
+  }
+}

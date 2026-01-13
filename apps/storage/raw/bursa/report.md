@@ -1,5 +1,5 @@
 # Bursa Malaysia Scraping Report
-*Generated: 2026-01-13 19:38:21 UTC*
+*Generated: 2026-01-13 20:16:52 UTC*
 
 ## Summary
 - **Announcements Scraped**: 3
@@ -8,23 +8,23 @@
 
 ## Announcements
 
-### 1. Quarterly Rpt On Consolidated Results For The Financial Period Ended 30/09/2025
-- **Date**: 30 Oct 2025
+### 1. Quarterly rpt on consolidated results for the financial period ended 30/11/2025
+- **Date**: 13 Jan 2026
 - **Category**: Financial Result
-- **Company**: BURSA MALAYSIA BERHAD
-- **Tables**: 7
+- **Company**: FOODIE MEDIA BERHAD
+- **Tables**: 1
 
-### 2. Quarterly Rpt On Consolidated Results For The Financial Period Ended 30/06/2025
-- **Date**: 29 Jul 2025
+### 2. Quarterly rpt on consolidated results for the financial period ended 30/09/2025
+- **Date**: 06 Jan 2026
 - **Category**: Financial Result
-- **Company**: BURSA MALAYSIA BERHAD
-- **Tables**: 7
+- **Company**: SEMICO CAPITAL BERHAD
+- **Tables**: 1
 
-### 3. Quarterly Rpt On Consolidated Results For The Financial Period Ended 31/03/2025
-- **Date**: 28 Apr 2025
+### 3. Change in Financial Year End
+- **Date**: 02 Jan 2026
 - **Category**: Financial Result
-- **Company**: BURSA MALAYSIA BERHAD
-- **Tables**: 6
+- **Company**: BCM ALLIANCE BERHAD
+- **Tables**: 1
 
 
 ## Outputs

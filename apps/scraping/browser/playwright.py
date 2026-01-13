@@ -19,7 +19,6 @@ class PlaywrightBrowser:
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--enable-maximized-feature" # For window management
             ],
         )
         return self.browser
@@ -39,13 +38,14 @@ class PlaywrightBrowser:
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
+                "Chrome/131.0.0.0 Safari/537.36"
             ),
-            locale="en-MY",
+            locale="en-US,en;q=0.9",
             viewport={"width": 1920, "height": 1080},
             record_video_dir=self.video_dir,
             record_video_size={"width": 1920, "height": 1080},
         )
+        
         self.page = await self.context.new_page()
         return self.context
 

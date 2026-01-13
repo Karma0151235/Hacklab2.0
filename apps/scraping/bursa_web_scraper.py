@@ -17,12 +17,12 @@ from apps.scraping.bursa.announcement_fetcher import BursaAnnouncementFetcher
 from apps.scraping.bursa.html_parser import BursaHTMLParser
 from apps.scraping.common.schemas import StructuredRecord, DocumentObject
 
-# Category configuration: Only Financial Result
+# Category configuration: Financial Results on www.bursamalaysia.com
 CATEGORY_CONFIG = {
     "Financial Result": {
-        "cat_id": 10820,
+        "cat_code": "FA,FRCO",  # Category code for API filtering
         "folder_name": "financial_result",
-        "url": "https://bursa-bm.listedcompany.com/newsroom.html/cat/10820"
+        "url": "https://www.bursamalaysia.com/market_information/announcements/company_announcement"
     }
 }
 
@@ -33,7 +33,7 @@ class BursaWebScraper:
     """
     def __init__(self, progress_callback=None):
         self.progress_tracker = ProgressTracker(task_id="bursa_scrape")
-        self.base_url = "https://bursa-bm.listedcompany.com/newsroom.html"
+        self.base_url = "https://www.bursamalaysia.com/market_information/announcements/company_announcement"
         self.announcements = []
         self.structured_records = []
         self.document_objects = []
@@ -62,7 +62,8 @@ class BursaWebScraper:
         try:
             # Phase 1-2: Initialize browser & video recording
             await self.progress_tracker.emit_progress("loading", 10, "Launching browser...")
-            await browser.launch(headless=True)
+            # Level 1 Cloudflare Bypass: headless=False to appear human
+            await browser.launch(headless=False)  # VISIBLE BROWSER - Can manually solve CAPTCHA
             await browser.create_context()
             page = browser.page
             
@@ -105,10 +106,12 @@ class BursaWebScraper:
                     f"Category: {category_name}"
                 )
                 
-                # Navigate directly to category URL
-                category_announcements = await crawler.crawl_category_by_url(
+                
+                # Navigate to base URL and filter by category
+                category_announcements = await crawler.crawl_category_by_filter(
                     page, 
-                    config["url"],
+                    self.base_url,
+                    config["cat_code"],  # Use category code for filtering
                     category_name,
                     max_announcements
                 )
@@ -196,7 +199,7 @@ class BursaWebScraper:
     def _create_structured_record(self, announcement: Dict[str, Any], tables_data: List[Dict]) -> StructuredRecord:
         """Create structured record for SQL/Dashboard (Phase 7)."""
         # Extract company name with multiple fallback strategies
-        company_code = self._extract_company_name(tables_data)
+        company_code = self._extract_company_name(announcement, tables_data)
         
         # Extract numeric fields
         numeric_data = {}
@@ -217,7 +220,7 @@ class BursaWebScraper:
                                 pass
         
         return StructuredRecord(
-            announcement_id=announcement.get('detail_page_url', '').split('/')[-1] or 'unknown',
+            announcement_id=announcement.get('announcement_id', 'unknown'),  # Use ann_id from listing
             company_code=company_code,
             announcement_date=announcement.get('date', ''),
             category=announcement.get('category', ''),
@@ -247,7 +250,7 @@ class BursaWebScraper:
         
         
         # Extract company name with multiple fallback strategies
-        company_code = self._extract_company_name(tables_data)
+        company_code = self._extract_company_name(announcement, tables_data)
         
         # Build metadata from tables
         metadata = {}
@@ -281,9 +284,21 @@ class BursaWebScraper:
             summary=raw_text[:200] + "..." if len(raw_text) > 200 else raw_text,
         )
     
-    def _extract_company_name(self, tables_data: List[Dict]) -> str:
-        """Extract company name from tables with multiple fallback strategies."""
-        # Strategy 1: Look for Stock Name or Company Name in "Announcement Info" table
+    
+    def _extract_company_name(self, announcement: Dict, tables_data: List[Dict]) -> str:
+        """
+        Extract company name with multiple fallback strategies.
+        
+        Priority:
+        1. Company name from listing table (new www.bursamalaysia.com)
+        2. Stock Name/Company Name from detail page tables
+        3. Announcement ID as fallback
+        """
+        # Strategy 1: Use company_name from listing (available on new site)
+        if announcement.get('company_name') and announcement['company_name'] not in ['N/A', 'Unknown', '']:
+            return announcement['company_name']
+        
+        # Strategy 2: Look for Stock Name or Company Name in "Announcement Info" table
         for table in tables_data:
             if table.get('title', '').lower() == 'announcement info':
                 for row in table.get('rows', []):
@@ -297,7 +312,7 @@ class BursaWebScraper:
                             if key != 'Company Name' and value and len(value) > 2:
                                 return value
         
-        # Strategy 2: Look for any company-related field in any table
+        # Strategy 3: Look for any company-related field in any table
         for table in tables_data:
             for row in table.get('rows', []):
                 for key in ['Stock Name', 'Company Name', 'Stock Code', 'Code', 'Symbol', 'Company Code']:

@@ -10,90 +10,114 @@ class BursaListingCrawler:
     def __init__(self):
         pass
 
-    async def crawl_category_by_url(
+    async def crawl_category_by_filter(
         self, 
         page: Page, 
-        category_url: str,
+        base_url: str,
+        category_code: str,
         category_name: str,
         max_announcements: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Navigate to category-specific URL and extract announcements.
+        Navigate to base URL and filter by category using form submission.
         
         Args:
             page: Playwright page
-            category_url: Full URL with cat ID (e.g., .../newsroom.html/cat/165)
+            base_url: Base URL (www.bursamalaysia.com announcements)
+            category_code: Category code for filtering (e.g., "FA,FRCO")
             category_name: Display name for tagging announcements
             max_announcements: Maximum number of announcements to extract
             
         Returns:
             List of announcements with category field set to category_name
         """
-        # Navigate to category URL
-        await page.goto(category_url, wait_until="domcontentloaded", timeout=30000)
-        await page.wait_for_timeout(2000)
+        # Navigate to base URL
+        await page.goto(base_url, wait_until="domcontentloaded", timeout=30000)
         
-        # Extract announcements from this category page
-        announcements = await self._extract_announcements_from_page(page, category_name)
+        # Level 1 Cloudflare Bypass: Give user time to manually solve CAPTCHA
+        print("\n" + "="*70)
+        print("👀 Check the browser window!")
+        print("   If you see a Cloudflare 'Verify you are human' box,")
+        print("   click it manually now!")
+        print("   Waiting 10 seconds...")
+        print("="*70 + "\n")
+        await page.wait_for_timeout(10000)  # 10 seconds for manual CAPTCHA solving
+        
+        # Filter by category using form
+        try:
+            # Wait for category select to be available
+            await page.wait_for_selector('select[name="cat"]', timeout=10000)
+
+            
+            # Select the category option by value
+            await page.select_option('select[name="cat"]', value=category_code, timeout=5000)
+            await page.wait_for_timeout(800)
+            
+            # Click Search button
+            await page.wait_for_selector('.form-submit-btn', timeout=5000)
+            await page.click('.form-submit-btn', timeout=5000)
+            await page.wait_for_timeout(5000)  # Wait longer for AJAX results to load
+            
+        except Exception as e:
+            print(f"Warning: Could not filter by category '{category_name}': {e}")
+            print("Attempting to proceed with current page content...")
+            # Continue with current page content
+
+        
+        # Extract announcements from table
+        announcements = await self._extract_announcements_from_table(page, category_name)
         
         return announcements[:max_announcements]
     
-    async def crawl_yearly_listings(self, page: Page, year: int = 2025, max_announcements: int = 10, categories: List[str] = None) -> List[Dict[str, Any]]:
+    async def _extract_announcements_from_table(
+        self, 
+        page: Page, 
+        category: str = "Financial Result"
+    ) -> List[Dict[str, Any]]:
         """
-        Extract announcement rows from the listing page (Phase 2).
+        Extract announcements from www.bursamalaysia.com table structure.
         
-        Args:
-            page: Playwright page object
-            year: Year to filter announcements
-            max_announcements: Maximum number of announcements to scrape
-            categories: Optional list of categories to filter (not used, kept for backwards compatibility)
-        """
-        # Extract announcements with "All Announcements" (no category filter)
-        announcements_data = await self._extract_announcements_from_page(page, "General")
-        
-        return announcements_data[:max_announcements]
-    
-    async def _extract_announcements_from_page(self, page: Page, category: str = "General") -> List[Dict[str, Any]]:
-        """
-        Extract announcement data from the current page using JavaScript evaluation.
-        
-        Args:
-            page: Playwright page object
-            category: Category name to tag announcements with
-            
-        Returns:
-            List of announcement dictionaries
+        Table columns: No., Announcement Date, Company Name, Title
         """
         announcements_data = await page.evaluate("""(category) => {
             const results = [];
             const seen = new Set();
             
-            // Try specific table selector first for bursa-bm.listedcompany.com
-            // Identified classes: bm_row1, bm_row2
-            const rows = document.querySelectorAll('tr.bm_row1, tr.bm_row2');
+            // Select announcement rows from table
+            const rows = document.querySelectorAll('tbody tr');
             
             for (const row of rows) {
                 if (results.length >= 100) break;
                 
                 const cells = row.querySelectorAll('td');
-                if (cells.length < 2) continue; // Expecting Date, Title
+                if (cells.length < 4) continue;
                 
-                // Heuristic column detection
-                // Usually Col 1 = Date, Col 2 = Title/Link
-                const date = cells[0].innerText.trim();
-                const titleElem = cells[1].querySelector('a');
-                const title = titleElem ? titleElem.innerText.trim() : cells[1].innerText.trim();
+                // Extract data from columns
+                const date = cells[1].innerText.trim();  // Column 2: Announcement Date
+                const companyElem = cells[2].querySelector('a');  // Column 3: Company Name
+                const companyName = companyElem ? companyElem.innerText.trim() : cells[2].innerText.trim();
+                
+                const titleElem = cells[3].querySelector('a');  // Column 4: Title
+                const title = titleElem ? titleElem.innerText.trim() : cells[3].innerText.trim();
                 const detailUrl = titleElem ? titleElem.href : null;
                 
                 if (!detailUrl || seen.has(detailUrl)) continue;
                 seen.add(detailUrl);
                 
+                // Extract ann_id from URL (pattern: announcement_details?ann_id=XXXXXXX)
+                const annIdMatch = detailUrl.match(/ann_id=(\d+)/);
+                const annId = annIdMatch ? annIdMatch[1] : null;
+                
+                if (!annId) continue;
+                
                 results.push({
                     date: date,
                     title: title,
-                    category: category, // Use the provided category parameter
+                    category: category,
+                    company_name: companyName,  // Now available directly from listing
                     detail_page_url: detailUrl,
-                    pdf_urls: [], // Gathered from detail page usually
+                    announcement_id: annId,  // Extracted from URL
+                    pdf_urls: [],  // Will be extracted from detail page
                     position: {
                         top: row.getBoundingClientRect().top + window.scrollY,
                         left: row.getBoundingClientRect().left,
@@ -102,10 +126,12 @@ class BursaListingCrawler:
                     }
                 });
             }
+            
             return results;
         }""", category)
         
         return announcements_data
+    
 
     async def highlight_announcements_on_page(self, page: Page, announcements: List[Dict[str, Any]]):
         """
