@@ -73,7 +73,7 @@ export function AlertCard({
         )}
       />
 
-      <div className={cn('p-4 pl-5', styles.bg)}> {/* Compact padding, compensated for left bar */}
+      <div className={cn('p-8 pl-10', styles.bg)}> {/* Much larger padding */}
         {/* Header */}
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">

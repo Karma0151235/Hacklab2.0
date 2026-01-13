@@ -27,7 +27,7 @@ export function AppShell({ children, breadcrumbs, alertCount = 5 }: AppShellProp
         <Header breadcrumbs={breadcrumbs} alertCount={alertCount} />
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto dashboard-bg">
+        <main className="flex-1 overflow-y-auto dashboard-bg p-6">
           {children}
         </main>
       </div>
