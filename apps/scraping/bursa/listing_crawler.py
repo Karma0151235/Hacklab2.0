@@ -10,20 +10,61 @@ class BursaListingCrawler:
     def __init__(self):
         pass
 
+    async def crawl_category_by_url(
+        self, 
+        page: Page, 
+        category_url: str,
+        category_name: str,
+        max_announcements: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Navigate to category-specific URL and extract announcements.
+        
+        Args:
+            page: Playwright page
+            category_url: Full URL with cat ID (e.g., .../newsroom.html/cat/165)
+            category_name: Display name for tagging announcements
+            max_announcements: Maximum number of announcements to extract
+            
+        Returns:
+            List of announcements with category field set to category_name
+        """
+        # Navigate to category URL
+        await page.goto(category_url, wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(2000)
+        
+        # Extract announcements from this category page
+        announcements = await self._extract_announcements_from_page(page, category_name)
+        
+        return announcements[:max_announcements]
+    
     async def crawl_yearly_listings(self, page: Page, year: int = 2025, max_announcements: int = 10, categories: List[str] = None) -> List[Dict[str, Any]]:
         """
         Extract announcement rows from the listing page (Phase 2).
+        
+        Args:
+            page: Playwright page object
+            year: Year to filter announcements
+            max_announcements: Maximum number of announcements to scrape
+            categories: Optional list of categories to filter (not used, kept for backwards compatibility)
         """
-        # Navigate handling is done by orchestrator or here? 
-        # The guide implies this method is called after navigation or handles it.
-        # "Phase 4: Navigate to Bursa listing page... await _scrape_listing_page"
-        # So we assume page is already at the listing or we navigate here.
-        # For better separation, let's assume we are ON the page or navigation happens before.
-        # Actually scraper_runner (Phase 5 in guide) calls _scrape_listing_page.
+        # Extract announcements with "All Announcements" (no category filter)
+        announcements_data = await self._extract_announcements_from_page(page, "General")
         
-        # We'll use the JS extraction logic from the guide
+        return announcements_data[:max_announcements]
+    
+    async def _extract_announcements_from_page(self, page: Page, category: str = "General") -> List[Dict[str, Any]]:
+        """
+        Extract announcement data from the current page using JavaScript evaluation.
         
-        announcements_data = await page.evaluate("""() => {
+        Args:
+            page: Playwright page object
+            category: Category name to tag announcements with
+            
+        Returns:
+            List of announcement dictionaries
+        """
+        announcements_data = await page.evaluate("""(category) => {
             const results = [];
             const seen = new Set();
             
@@ -50,7 +91,7 @@ class BursaListingCrawler:
                 results.push({
                     date: date,
                     title: title,
-                    category: "General", // bursa-bm listing might not show category explicitly in table
+                    category: category, // Use the provided category parameter
                     detail_page_url: detailUrl,
                     pdf_urls: [], // Gathered from detail page usually
                     position: {
@@ -62,16 +103,9 @@ class BursaListingCrawler:
                 });
             }
             return results;
-        }""")
+        }""", category)
         
-        # Filter (Python side)
-        if categories:
-            announcements_data = [
-                a for a in announcements_data
-                if any(cat.lower() in a['title'].lower() for cat in categories) # Check title for category keywords
-            ]
-            
-        return announcements_data[:max_announcements]
+        return announcements_data
 
     async def highlight_announcements_on_page(self, page: Page, announcements: List[Dict[str, Any]]):
         """

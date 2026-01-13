@@ -17,6 +17,15 @@ from apps.scraping.bursa.announcement_fetcher import BursaAnnouncementFetcher
 from apps.scraping.bursa.html_parser import BursaHTMLParser
 from apps.scraping.common.schemas import StructuredRecord, DocumentObject
 
+# Category configuration: Only Financial Result
+CATEGORY_CONFIG = {
+    "Financial Result": {
+        "cat_id": 10820,
+        "folder_name": "financial_result",
+        "url": "https://bursa-bm.listedcompany.com/newsroom.html/cat/10820"
+    }
+}
+
 class BursaWebScraper:
     """
     Main orchestrator for Bursa Malaysia announcements scraping.
@@ -33,10 +42,17 @@ class BursaWebScraper:
         self,
         year: int = 2025,
         max_announcements: int = 10,
-        categories: List[str] = None
+        categories: List[str] = None,
+        scrape_all_categories: bool = False
     ) -> Dict[str, Any]:
         """
         Main scraping method implementing Phases 1-12.
+        
+        Args:
+            year: Year to filter announcements
+            max_announcements: Maximum announcements per category
+            categories: Specific categories to scrape (if None and scrape_all_categories=False, scrapes "All Announcements")
+            scrape_all_categories: If True, iterates through all available categories
         
         Returns:
             Dict containing structured_records, document_objects, video_base64, and report
@@ -60,15 +76,52 @@ class BursaWebScraper:
             await page.goto(listing_url, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_timeout(2000)
             
-            # Phase 5: Extract announcements from listing
-            await self.progress_tracker.emit_progress("detecting", 40, "Scanning announcements...")
+            
+            
+            # Phase 5: Determine which categories to scrape (now only Financial Result)
+            if scrape_all_categories:
+                categories_to_scrape = list(CATEGORY_CONFIG.items())
+            elif categories:
+                # Filter to requested categories
+                categories_to_scrape = [(k, v) for k, v in CATEGORY_CONFIG.items() if k in categories]
+            else:
+                # Default: scrape only Financial Result
+                categories_to_scrape = [("Financial Result", CATEGORY_CONFIG["Financial Result"])]
+            
+            await self.progress_tracker.emit_progress(
+                "detecting", 
+                40, 
+                f"Scraping {len(categories_to_scrape)} categories..."
+            )
+            
+            # Phase 6: Iterate through categories using direct URLs
             crawler = BursaListingCrawler()
-            self.announcements = await crawler.crawl_yearly_listings(page, year, max_announcements, categories)
             
-            # Highlight announcements on listing page
-            await crawler.highlight_announcements_on_page(page, self.announcements)
+            for cat_idx, (category_name, config) in enumerate(categories_to_scrape):
+                cat_progress = 40 + int((cat_idx / len(categories_to_scrape)) * 20)
+                await self.progress_tracker.emit_progress(
+                    "detecting",
+                    cat_progress,
+                    f"Category: {category_name}"
+                )
+                
+                # Navigate directly to category URL
+                category_announcements = await crawler.crawl_category_by_url(
+                    page, 
+                    config["url"],
+                    category_name,
+                    max_announcements
+                )
+                
+                # Highlight announcements on listing page
+                await crawler.highlight_announcements_on_page(page, category_announcements)
+                
+                # Add to main announcements list
+                self.announcements.extend(category_announcements)
             
-            # Phase 6: Scrape each announcement detail page
+            
+            
+            # Phase 7: Scrape each announcement detail page
             await self.progress_tracker.emit_progress("scraping", 60, f"Processing {len(self.announcements)} announcements...")
             
             fetcher = BursaAnnouncementFetcher()
@@ -142,14 +195,8 @@ class BursaWebScraper:
 
     def _create_structured_record(self, announcement: Dict[str, Any], tables_data: List[Dict]) -> StructuredRecord:
         """Create structured record for SQL/Dashboard (Phase 7)."""
-        # Extract company code from tables
-        company_code = None
-        for table in tables_data:
-            for row in table.get('rows', []):
-                for key in ['Code', 'Company Code', 'Stock Code', 'Symbol', 'Stock Name', 'Company Name']:
-                    if key in row and row[key]:
-                        company_code = row[key]
-                        break
+        # Extract company name with multiple fallback strategies
+        company_code = self._extract_company_name(tables_data)
         
         # Extract numeric fields
         numeric_data = {}
@@ -198,14 +245,9 @@ class BursaWebScraper:
         elif 'notice' in category:
             doc_type = "notice"
         
-        # Extract company code from tables
-        company_code = None
-        for table in tables_data:
-            for row in table.get('rows', []):
-                for key in ['Code', 'Company Code', 'Stock Code', 'Symbol', 'Stock Name', 'Company Name']:
-                    if key in row and row[key]:
-                        company_code = row[key]
-                        break
+        
+        # Extract company name with multiple fallback strategies
+        company_code = self._extract_company_name(tables_data)
         
         # Build metadata from tables
         metadata = {}
@@ -238,6 +280,35 @@ class BursaWebScraper:
             keywords=self._extract_keywords(announcement.get('title', '') + ' ' + raw_text[:500]),
             summary=raw_text[:200] + "..." if len(raw_text) > 200 else raw_text,
         )
+    
+    def _extract_company_name(self, tables_data: List[Dict]) -> str:
+        """Extract company name from tables with multiple fallback strategies."""
+        # Strategy 1: Look for Stock Name or Company Name in "Announcement Info" table
+        for table in tables_data:
+            if table.get('title', '').lower() == 'announcement info':
+                for row in table.get('rows', []):
+                    # Check for Stock Name
+                    if 'Stock Name' in row and row['Stock Name']:
+                        return row['Stock Name']
+                    # Check for Company Name as a key
+                    if 'Company Name' in row:
+                        # The value might be in a different column
+                        for key, value in row.items():
+                            if key != 'Company Name' and value and len(value) > 2:
+                                return value
+        
+        # Strategy 2: Look for any company-related field in any table
+        for table in tables_data:
+            for row in table.get('rows', []):
+                for key in ['Stock Name', 'Company Name', 'Stock Code', 'Code', 'Symbol', 'Company Code']:
+                    if key in row and row[key]:
+                        value = row[key]
+                        # Skip if it's just the key repeated or too short
+                        if value != key and len(value) > 2:
+                            return value
+        
+        # Fallback: Return None (will be handled by scraper_runner)
+        return None
 
     def _extract_keywords(self, text: str) -> List[str]:
         """Extract keywords from text."""
