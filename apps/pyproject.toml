@@ -138,4 +138,4 @@ asyncio_mode = "auto"
 addopts = "-v --cov=. --cov-report=html --cov-report=term-missing"
 
 [tool.setuptools]
-packages = ["ingestion", "etl", "storage", "schemas", "agents", "workflows", "api"]
+packages = ["scraping", "etl", "storage", "schemas", "agents", "workflows", "api"]
