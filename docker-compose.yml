@@ -1,0 +1,145 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: market_intel_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: market_intel
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5489:5432"  # Uncommon port: 5489 (5432 + 57)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./apps/etl/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks:
+      - market_intel_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Milvus Vector Database
+  milvus:
+    image: milvusdb/milvus:v2.4.6
+    container_name: market_intel_milvus
+    depends_on:
+      - minio
+      - etcd
+    environment:
+      COMMON_STORAGETYPE: minio
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: minioadmin
+      MINIO_SECRET_ACCESS_KEY: minioadmin
+      ETCD_ENDPOINTS: etcd:2379
+      COMMON_LOG_LEVEL: info
+    command: milvus run standalone
+    ports:
+      - "19639:19530"  # Uncommon port: 19639 (19530 + 109)
+      - "9139:9091"    # Metrics: 9139 (9091 + 48)
+    volumes:
+      - milvus_data:/var/lib/milvus
+    networks:
+      - market_intel_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # Minio (Object Storage for Milvus)
+  minio:
+    image: minio/minio:latest
+    container_name: market_intel_minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9089:9000"   # Uncommon port: 9089 (9000 + 89)
+      - "9091:9091"   # Console: 9091
+    volumes:
+      - minio_data:/data
+    networks:
+      - market_intel_network
+    command: server /data --console-address ":9091"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Etcd (for Milvus coordination)
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: market_intel_etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    ports:
+      - "2389:2379"   # Uncommon port: 2389 (2379 + 10)
+      - "2390:2380"   # Peer: 2390
+    volumes:
+      - etcd_data:/etcd
+    networks:
+      - market_intel_network
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=localhost:2379", "endpoint", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Attu (Milvus Web UI)
+  attu:
+    image: zilliz/attu:latest
+    container_name: market_intel_attu
+    depends_on:
+      - milvus
+    environment:
+      MILVUS_URL: http://milvus:19530
+    ports:
+      - "7654:3000"  # Web UI: 7654
+    networks:
+      - market_intel_network
+    restart: unless-stopped
+
+  # Redis (Optional: for caching/sessions)
+  redis:
+    image: redis:7-alpine
+    container_name: market_intel_redis
+    ports:
+      - "6389:6379"   # Uncommon port: 6389 (6379 + 10)
+    volumes:
+      - redis_data:/data
+    networks:
+      - market_intel_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  milvus_data:
+    driver: local
+  minio_data:
+    driver: local
+  etcd_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  market_intel_network:
+    driver: bridge

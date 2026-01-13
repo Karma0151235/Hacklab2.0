@@ -124,7 +124,7 @@ tmp/
 *.mp4
 
 # PDF & document processing
-*.pdf
+
 *.png
 *.jpg
 *.jpeg
@@ -162,7 +162,6 @@ api_keys.txt
 
 # Scraped data (before processing)
 raw_html/
-raw_pdfs/
 raw_announcements/
 
 # LLM cache
