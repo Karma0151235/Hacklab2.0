@@ -157,13 +157,13 @@ export default function BursaScraperPage() {
               value={maxAnnouncements}
               onValueChange={setMaxAnnouncements}
               min={1}
-              max={10}
+              max={100}
               step={1}
               className="w-full"
             />
             <div className="flex justify-between text-xs text-gray-500">
               <span>1</span>
-              <span>10</span>
+              <span>100</span>
             </div>
           </div>
           

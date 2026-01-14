@@ -4,7 +4,7 @@ Handles scraping job control, status tracking, and results retrieval
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 import tempfile
 import uuid
 from datetime import datetime
@@ -70,6 +70,8 @@ class BursaScrapingResults(BaseModel):
     total_announcements: int
     announcements: List[AnnouncementRecord]
     video_available: bool
+    ingestion_stats: Optional[Dict[str, int]] = None
+    ingestion_status: Optional[str] = None
 
 
 # In-memory job storage (replace with Redis/DB in production)
@@ -153,6 +155,39 @@ async def run_scraping_task_async(job_id: str, year: int, max_announcements: int
             'total_announcements': result.get('total_announcements', 0)
         }
         
+        # ============= NEW: Automatic Database Ingestion =============
+        # Ingest scraped data into MilvusDB
+        document_objects = result.get('document_objects', [])
+        if document_objects:
+            try:
+                logger.info(f"[Job {job_id}] Starting database ingestion of {len(document_objects)} documents...")
+                job_statuses[job_id]["phase"] = "ingesting"
+                job_statuses[job_id]["progress"] = 85
+                
+                # Import ingestion module
+                from bursa_ingestion import ingest_bursa_scraping_results
+                
+                # Ingest into MilvusDB
+                ingestion_result = ingest_bursa_scraping_results(document_objects)
+                
+                # Store ingestion stats in job results
+                job_results[job_id]['ingestion_stats'] = ingestion_result.get('stats', {})
+                job_results[job_id]['ingestion_status'] = ingestion_result.get('status', 'unknown')
+                
+                if ingestion_result.get('status') == 'success':
+                    logger.info(f"[Job {job_id}] Database ingestion complete: {ingestion_result.get('stats', {})}")
+                else:
+                    logger.warning(f"[Job {job_id}] Database ingestion failed: {ingestion_result.get('message', 'Unknown error')}")
+                    
+            except Exception as ingest_error:
+                logger.error(f"[Job {job_id}] Database ingestion error: {str(ingest_error)}")
+                job_statuses[job_id]["errors"].append(f"Ingestion error: {str(ingest_error)}")
+                import traceback
+                traceback.print_exc()
+        else:
+            logger.warning(f"[Job {job_id}] No document objects to ingest")
+        # ==============================================================
+        
         # Update status to completed
         job_statuses[job_id]["status"] = "completed"
         job_statuses[job_id]["phase"] = "complete"
@@ -186,6 +221,38 @@ async def start_bursa_scraping(
     Returns job ID for tracking progress
     """
     import threading
+    import os
+    
+    # ============= NEW: Pre-flight Milvus Health Check =============
+    try:
+        from etl.db.milvus import MilvusStorage
+        milvus_host = os.getenv('MILVUS_HOST', 'localhost')
+        milvus_port = int(os.getenv('MILVUS_PORT', '19639'))
+        
+        logger.info(f"Checking Milvus connection at {milvus_host}:{milvus_port}...")
+        milvus_check = MilvusStorage(host=milvus_host, port=milvus_port)
+        
+        if not milvus_check.connected:
+            raise HTTPException(
+                status_code=503,
+                detail=f"MilvusDB is not available at {milvus_host}:{milvus_port}. Please start Milvus before scraping."
+            )
+        
+        if not milvus_check.health_check():
+            raise HTTPException(
+                status_code=503,
+                detail=f"MilvusDB health check failed at {milvus_host}:{milvus_port}. Database may be unhealthy."
+            )
+        
+        logger.info("✓ Milvus health check passed")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to verify Milvus connection: {str(e)}"
+        )
+    # ==============================================================
     
     # Generate job ID
     job_id = f"bursa_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
@@ -278,7 +345,9 @@ async def get_bursa_scraping_results(job_id: str):
         status="completed",
         total_announcements=results['total_announcements'],
         announcements=[AnnouncementRecord(**ann) for ann in results['announcements']],
-        video_available=len(results.get('video_base64', '')) > 0
+        video_available=len(results.get('video_base64', '')) > 0,
+        ingestion_stats=results.get('ingestion_stats'),
+        ingestion_status=results.get('ingestion_status')
     )
 
 

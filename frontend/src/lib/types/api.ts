@@ -158,7 +158,13 @@ export interface VectorEntity {
   chunk_id: string
   doc_id: string
   content: string
-  chunk_order: number
-  company_code: string
-  document_type: string
+  chunk_order?: number
+  company_code?: string
+  document_type?: string
+  // Fields from pdf_text_chunks collection
+  filename?: string
+  company_name?: string
+  page_number?: number
+  source?: string
+  metadata_json?: string
 }

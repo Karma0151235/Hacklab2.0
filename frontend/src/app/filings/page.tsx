@@ -1,10 +1,9 @@
 'use client'
 
-import { FileText, Filter, Calendar } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { FileText, Filter, Calendar, Loader2 } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
 import { TimelineCard } from '@/components/data-display/timeline-card'
-import { mockFilings } from '@/lib/mock-data/filings'
-import { mockCompanies } from '@/lib/mock-data/companies'
+import { getFilings } from '@/lib/api/vectordb'
 import { cn } from '@/lib/utils'
 import { Filing } from '@/lib/types/api'
 
@@ -17,16 +16,53 @@ export default function FilingsPage() {
     useState<DocumentTypeFilter>('all')
   const [companyFilter, setCompanyFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [filings, setFilings] = useState<Filing[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch filings from vector database
+  useEffect(() => {
+    async function fetchFilings() {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const data = await getFilings({ limit: 500 })
+        setFilings(data as Filing[])
+      } catch (err) {
+        console.error('Failed to fetch filings:', err)
+        setError('Failed to load filings from database')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchFilings()
+  }, [])
 
   // Get unique document types
   const documentTypes = useMemo(() => {
-    const types = new Set(mockFilings.map((f) => f.document_type))
+    const types = new Set(filings.map((f) => f.document_type))
     return Array.from(types).sort()
-  }, [])
+  }, [filings])
+
+  // Get unique companies
+  const companies = useMemo(() => {
+    const companiesMap = new Map<string, { code: string; name: string }>()
+    filings.forEach((f) => {
+      if (!companiesMap.has(f.company_code)) {
+        companiesMap.set(f.company_code, {
+          code: f.company_code,
+          name: f.company_name,
+        })
+      }
+    })
+    return Array.from(companiesMap.values()).sort((a, b) => 
+      a.name.localeCompare(b.name)
+    )
+  }, [filings])
 
   // Filter filings
   const filteredFilings = useMemo(() => {
-    return mockFilings.filter((filing) => {
+    return filings.filter((filing) => {
       // Sentiment filter
       if (sentimentFilter !== 'all' && filing.sentiment !== sentimentFilter) {
         return false
@@ -59,7 +95,7 @@ export default function FilingsPage() {
 
       return true
     })
-  }, [sentimentFilter, documentTypeFilter, companyFilter, searchQuery])
+  }, [filings, sentimentFilter, documentTypeFilter, companyFilter, searchQuery])
 
   // Sort by date (newest first)
   const sortedFilings = useMemo(() => {
@@ -73,8 +109,34 @@ export default function FilingsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-bg-primary via-bg-secondary to-bg-primary p-8">
       <div className="mx-auto max-w-7xl space-y-8">
-        {/* Page Header */}
-        <div className="flex items-start justify-between">
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex min-h-[400px] items-center justify-center">
+            <div className="text-center">
+              <Loader2 className="mx-auto h-12 w-12 animate-spin text-accent-primary" />
+              <p className="mt-4 font-sans text-lg text-text-secondary">
+                Loading filings from database...
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Error State */}
+        {error && !isLoading && (
+          <div className="rounded-lg border border-error/40 bg-bg-secondary p-8 text-center">
+            <FileText className="mx-auto mb-4 h-16 w-16 text-error opacity-50" />
+            <h3 className="mb-2 font-sans text-xl font-semibold text-text-primary">
+              Error Loading Filings
+            </h3>
+            <p className="font-sans text-sm text-text-tertiary">{error}</p>
+          </div>
+        )}
+
+        {/* Main Content */}
+        {!isLoading && !error && (
+          <>
+            {/* Page Header */}
+            <div className="flex items-start justify-between">
           <div>
             <h1 className="mb-2 font-sans text-4xl font-bold text-text-primary">
               Filings Timeline
@@ -158,13 +220,11 @@ export default function FilingsPage() {
                 className="w-full rounded-md border border-border-secondary bg-bg-elevated px-4 py-2.5 font-sans text-sm text-text-primary focus:border-accent-primary/40 focus:outline-none focus:ring-2 focus:ring-accent-primary/20"
               >
                 <option value="all">All Companies</option>
-                {mockCompanies
-                  .sort((a, b) => a.company_name.localeCompare(b.company_name))
-                  .map((company) => (
-                    <option key={company.company_code} value={company.company_code}>
-                      {company.company_name} ({company.ticker})
-                    </option>
-                  ))}
+                {companies.map((company) => (
+                  <option key={company.code} value={company.code}>
+                    {company.name} ({company.code})
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -202,6 +262,8 @@ export default function FilingsPage() {
               <TimelineCard key={filing.filing_id} filing={filing} />
             ))}
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

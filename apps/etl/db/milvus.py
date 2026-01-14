@@ -291,8 +291,11 @@ class MilvusStorage:
             return False
 
         try:
+            # Import utility for listing collections
+            from pymilvus import utility
+            
             # Try a simple operation
-            collections = self.connections.list_collections()
+            collections = utility.list_collections()
             logger.debug(f"MilvusDB health check OK, found {len(collections)} collections")
             return True
         except Exception as e:
