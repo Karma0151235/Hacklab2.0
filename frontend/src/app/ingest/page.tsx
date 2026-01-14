@@ -1,58 +1,31 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Database, Play, BarChart3, FileText, AlertTriangle, CheckCircle2, MoreVertical, Archive, Upload, Loader2, RefreshCw } from "lucide-react"
-import { format } from "date-fns"
-
+import { Database, FileText, CheckCircle2, Archive, Upload, RefreshCw, HardDrive, ChevronDown, ChevronRight } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { DataTable } from "@/components/data-display/data-table"
-import { ScrapingProgress, LogEntry } from "@/components/notifications/scraping-progress"
-import { getIngestionJobs, getIngestionStats, getJobPhase, getScrapingLogs, cancelIngestionJob } from "@/lib/api/ingestion"
-import { IngestionJob } from "@/lib/types/api"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CollectionStats } from "@/lib/types/api"
+import { getVectorDBStats, describeCollection, queryEntities } from "@/lib/api/vectordb"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
 export default function IngestionPage() {
   const router = useRouter()
-  const [jobs, setJobs] = React.useState<IngestionJob[]>([])
-  const [stats, setStats] = React.useState<any>(null)
   const [isLoading, setIsLoading] = React.useState(true)
-  const [runningJob, setRunningJob] = React.useState<IngestionJob | null>(null)
-  const [activeLogs, setActiveLogs] = React.useState<LogEntry[]>([])
+  const [vectorStats, setVectorStats] = React.useState<any>(null)
+  const [expandedCollections, setExpandedCollections] = React.useState<Set<string>>(new Set())
 
   const fetchData = React.useCallback(async () => {
     try {
       setIsLoading(true)
-      const [fetchedJobs, fetchedStats] = await Promise.all([
-        getIngestionJobs(),
-        getIngestionStats()
-      ])
-      
-      setJobs(fetchedJobs)
-      setStats(fetchedStats)
-      
-      // Check for running job
-      const active = fetchedJobs.find(j => j.status === 'running')
-      if (active) {
-        setRunningJob(active)
-        // Fetch logs for the running job
-        const logs = await getScrapingLogs(active.job_id)
-        setActiveLogs(logs.map(l => ({
-            timestamp: format(new Date(l.timestamp), 'HH:mm:ss'),
-            message: l.message,
-            type: l.level
-        })))
-      } else {
-        setRunningJob(null)
-      }
+      const vdbStats = await getVectorDBStats()
+      setVectorStats(vdbStats)
     } catch (error) {
-      console.error("Failed to fetch ingestion data", error)
-      toast.error("Failed to load ingestion data")
+      console.error("Failed to fetch vector database data", error)
+      toast.error("Failed to load vector database stats")
     } finally {
       setIsLoading(false)
     }
@@ -62,121 +35,20 @@ export default function IngestionPage() {
     fetchData()
   }, [fetchData])
 
-  // Mock live update
-  React.useEffect(() => {
-    if (!runningJob) return
-
-    const interval = setInterval(() => {
-      setRunningJob(prev => {
-        if (!prev) return null
-        // Increment progress slightly for simulation
-        const newProgress = Math.min(prev.progress + 1, 99)
-        return { ...prev, progress: newProgress }
-      })
-      
-      // Add a random log occasionally
-      if (Math.random() > 0.7) {
-        setActiveLogs(prev => [...prev, {
-          timestamp: format(new Date(), 'HH:mm:ss'),
-          message: `Processing batch ${Math.floor(Math.random() * 100)}...`,
-          type: 'info'
-        }])
+  const toggleCollection = (collectionName: string) => {
+    setExpandedCollections(prev => {
+      const next = new Set(prev)
+      if (next.has(collectionName)) {
+        next.delete(collectionName)
+      } else {
+        next.add(collectionName)
       }
-    }, 2000)
-
-    return () => clearInterval(interval)
-  }, [runningJob])
-
-  const handleCancelJob = async () => {
-    if (!runningJob) return
-    try {
-      await cancelIngestionJob(runningJob.job_id)
-      toast.success("Job canceled successfully")
-      fetchData()
-    } catch (error) {
-      toast.error("Failed to cancel job")
-    }
+      return next
+    })
   }
 
-  const columns = [
-    {
-      key: "job_id",
-      label: "Job ID",
-      render: (job: IngestionJob) => <span className="font-mono text-xs">{job.job_id}</span>,
-    },
-    {
-      key: "type",
-      label: "Type",
-      render: (job: IngestionJob) => {
-        const type = job.type
-        return (
-          <div className="flex items-center gap-2">
-            {type === 'bursa' && <Database className="h-3 w-3 text-cyan-400" />}
-            {type === 'manual' && <Upload className="h-3 w-3 text-emerald-400" />}
-            {type === 'news' && <FileText className="h-3 w-3 text-amber-400" />}
-            <span className="capitalize">{type}</span>
-          </div>
-        )
-      },
-    },
-    {
-      key: "status",
-      label: "Status",
-      render: (job: IngestionJob) => {
-        const status = job.status
-        return (
-          <Badge variant="outline" className={cn(
-            "text-xs capitalize",
-            status === 'running' && "border-cyan-500/50 text-cyan-400 bg-cyan-950/30",
-            status === 'completed' && "border-emerald-500/50 text-emerald-400 bg-emerald-950/30",
-            status === 'failed' && "border-red-500/50 text-red-400 bg-red-950/30",
-            status === 'queued' && "border-slate-500/50 text-slate-400 bg-slate-950/30"
-          )}>
-            {status}
-          </Badge>
-        )
-      },
-    },
-    {
-      key: "progress",
-      label: "Progress",
-      render: (job: IngestionJob) => {
-        const progress = job.progress
-        return (
-          <div className="w-[100px]">
-             <div className="flex justify-between text-[10px] mb-1 text-slate-400">
-               <span>{progress}%</span>
-             </div>
-             <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-               <div 
-                 className="h-full bg-cyan-500 rounded-full" 
-                 style={{ width: `${progress}%` }}
-               />
-             </div>
-          </div>
-        )
-      }
-    },
-    {
-      key: "started_at",
-      label: "Started At",
-      render: (job: IngestionJob) => (
-        <span className="text-slate-400 text-xs">
-          {format(new Date(job.started_at), "MMM d, yyyy HH:mm")}
-        </span>
-      ),
-    },
-    {
-      key: "total_documents",
-      label: "Docs",
-      render: (job: IngestionJob) => (
-        <span className="font-mono text-xs">{job.total_documents}</span>
-      ),
-    },
-  ]
-
   return (
-    <div className="container mx-auto p-6 space-y-8 max-w-7xl animate-in fade-in duration-500">
+    <div className="container mx-auto p-6 space-y-8 max-w-7xl">
       
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -186,7 +58,7 @@ export default function IngestionPage() {
             Data Ingestion
           </h1>
           <p className="text-slate-400 mt-2">
-            Manage data scraping jobs, manual uploads, and monitor ingestion progress.
+            Vector database statistics and ingested document chunks
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -199,71 +71,6 @@ export default function IngestionPage() {
             Upload Files
           </Button>
           <Button 
-            className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-bold gap-2 shadow-[0_0_15px_rgba(6,182,212,0.5)]"
-            onClick={() => router.push('/ingest/bursa')}
-          >
-            <Play className="h-4 w-4" />
-            Start Scraper
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard 
-          title="Total Jobs" 
-          value={stats?.total || 0} 
-          icon={<Database className="h-4 w-4" />}
-          trend="All time"
-        />
-        <StatsCard 
-          title="Running Jobs" 
-          value={stats?.running || 0} 
-          icon={<Loader2 className="h-4 w-4" />}
-          className={stats?.running > 0 ? "border-cyan-500/50 bg-cyan-950/10" : ""}
-          trend="Currently active"
-        />
-        <StatsCard 
-          title="Documents Processed" 
-          value={stats?.totalDocuments || 0} 
-          icon={<FileText className="h-4 w-4" />}
-          trend="Pages & files"
-        />
-        <StatsCard 
-          title="Success Rate" 
-          value={`${stats?.successRate || 0}%`} 
-          icon={<CheckCircle2 className="h-4 w-4" />}
-          trend="Completion rate"
-        />
-      </div>
-
-      {/* Active Job Progress */}
-      {runningJob && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
-              <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
-              Active Job
-            </h2>
-          </div>
-          <ScrapingProgress 
-            jobId={runningJob.job_id}
-            status={runningJob.status}
-            phase={getJobPhase(runningJob.progress)}
-            progress={runningJob.progress}
-            documentCount={runningJob.processed_documents}
-            totalDocuments={runningJob.total_documents}
-            logs={activeLogs}
-            onCancel={handleCancelJob}
-          />
-        </div>
-      )}
-
-      {/* Job History Table */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-slate-100">Job History</h2>
-          <Button 
             variant="ghost" 
             size="sm" 
             className="text-slate-400 hover:text-cyan-400"
@@ -273,19 +80,254 @@ export default function IngestionPage() {
             Refresh
           </Button>
         </div>
-        
+      </div>
+
+      {/* Vector Database Statistics */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
+            <HardDrive className="h-5 w-5 text-cyan-400" />
+            Vector Database
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatsCard 
+            title="Total Collections" 
+            value={vectorStats?.totalCollections || 0} 
+            icon={<Database className="h-4 w-4" />}
+            trend={`${vectorStats?.activeCollections || 0} active`}
+          />
+          <StatsCard 
+            title="Total Entities" 
+            value={vectorStats?.totalEntities?.toLocaleString() || '0'} 
+            icon={<FileText className="h-4 w-4" />}
+            trend="Vector chunks"
+            className="border-cyan-500/30 bg-cyan-950/10"
+          />
+          <StatsCard 
+            title="Data Size" 
+            value={formatBytes(vectorStats?.totalSize || 0)} 
+            icon={<HardDrive className="h-4 w-4" />}
+            trend="Vector storage"
+          />
+          <StatsCard 
+            title="Active Collections" 
+            value={vectorStats?.activeCollections || 0} 
+            icon={<CheckCircle2 className="h-4 w-4" />}
+            trend="With data"
+          />
+        </div>
+
+        {/* Collection Breakdown - Expandable */}
         <Card className="border-slate-800 bg-slate-950/50">
-          <CardContent className="p-0">
-             <DataTable 
-               columns={columns} 
-               data={jobs} 
-               keyExtractor={(job) => job.job_id}
-             />
+          <CardHeader>
+            <CardTitle className="text-lg">Collections</CardTitle>
+            <CardDescription>Browse collection schemas and data</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {!vectorStats?.collectionBreakdown || vectorStats.collectionBreakdown.length === 0 ? (
+                <div className="text-center text-slate-500 py-8">
+                  No collections found
+                </div>
+              ) : (
+                vectorStats.collectionBreakdown.map((collection: CollectionStats) => (
+                  <CollectionCard
+                    key={collection.collectionName}
+                    collection={collection}
+                    isExpanded={expandedCollections.has(collection.collectionName)}
+                    onToggle={() => toggleCollection(collection.collectionName)}
+                  />
+                ))
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Actions */}
+      <Card className="border-slate-800 bg-slate-950/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Quick Actions</CardTitle>
+          <CardDescription>Manage your data ingestion</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Button 
+              variant="outline"
+              className="h-auto flex-col items-start p-4 border-slate-700 hover:bg-slate-800"
+              onClick={() => router.push('/ingest/upload')}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Upload className="h-5 w-5 text-cyan-400" />
+                <span className="font-semibold">Upload PDF Files</span>
+              </div>
+              <p className="text-xs text-slate-400 text-left">
+                Upload financial documents for processing and vector storage
+              </p>
+            </Button>
+            
+            <Button 
+              variant="outline"
+              className="h-auto flex-col items-start p-4 border-slate-700 hover:bg-slate-800"
+              onClick={() => router.push('/ingest/bursa')}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Database className="h-5 w-5 text-cyan-400" />
+                <span className="font-semibold">Start Bursa Scraper</span>
+              </div>
+              <p className="text-xs text-slate-400 text-left">
+                Scrape announcements from Bursa Malaysia
+              </p>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
+}
+
+function CollectionCard({ 
+  collection, 
+  isExpanded, 
+  onToggle 
+}: { 
+  collection: CollectionStats
+  isExpanded: boolean
+  onToggle: () => void
+}) {
+  const [schema, setSchema] = React.useState<any>(null)
+  const [sampleData, setSampleData] = React.useState<any[]>([])
+  const [loading, setLoading] = React.useState(false)
+
+  React.useEffect(() => {
+    if (isExpanded && !schema) {
+      loadCollectionDetails()
+    }
+  }, [isExpanded])
+
+  const loadCollectionDetails = async () => {
+    setLoading(true)
+    try {
+      const [schemaData, entities] = await Promise.all([
+        describeCollection(collection.collectionName),
+        queryEntities(collection.collectionName, { limit: 5 })
+      ])
+      setSchema(schemaData)
+      setSampleData(entities)
+    } catch (error) {
+      console.error("Failed to load collection details", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="border border-slate-800 rounded-lg bg-slate-900/30 overflow-hidden">
+      {/* Collection Header */}
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between p-4 hover:bg-slate-900/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          {isExpanded ? (
+            <ChevronDown className="h-4 w-4 text-slate-400" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-slate-400" />
+          )}
+          <div className={cn(
+            "h-2 w-2 rounded-full",
+            collection.rowCount > 0 ? "bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]" : "bg-slate-600"
+          )} />
+          <span className="text-sm font-medium text-slate-300 font-mono">
+            {collection.collectionName}
+          </span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-slate-400">
+            {collection.rowCount.toLocaleString()} entities
+          </span>
+          <span className="text-xs text-slate-500 font-mono">
+            {formatBytes(collection.dataSize || 0)}
+          </span>
+        </div>
+      </button>
+
+      {/* Expanded Content */}
+      {isExpanded && (
+        <div className="border-t border-slate-800 p-4">
+          {loading ? (
+            <div className="text-center text-slate-500 py-4">Loading...</div>
+          ) : (
+            <Tabs defaultValue="schema" className="w-full">
+              <TabsList className="bg-slate-900 border-slate-800">
+                <TabsTrigger value="schema" className="data-[state=active]:bg-slate-800">
+                  Schema
+                </TabsTrigger>
+                <TabsTrigger value="data" className="data-[state=active]:bg-slate-800">
+                  Sample Data
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="schema" className="mt-4">
+                {schema ? (
+                  <div className="space-y-2">
+                    {schema.fields?.map((field: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between p-2 rounded bg-slate-900/50 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-cyan-400">{field.name}</span>
+                          {field.is_primary && (
+                            <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px]">
+                              PRIMARY
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-slate-500">{field.type}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-500 text-sm">No schema available</div>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="data" className="mt-4">
+                {sampleData.length > 0 ? (
+                  <div className="space-y-3">
+                    {sampleData.map((entity, idx) => (
+                      <div key={idx} className="p-3 rounded bg-slate-900/50 space-y-1">
+                        {Object.entries(entity).map(([key, value]) => (
+                          <div key={key} className="flex text-xs">
+                            <span className="text-slate-500 w-32 flex-shrink-0">{key}:</span>
+                            <span className="text-slate-300 font-mono break-all">
+                              {typeof value === 'string' && value.length > 100 
+                                ? value.substring(0, 100) + '...' 
+                                : String(value)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-slate-500 text-sm">No data available</div>
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
 }
 
 function StatsCard({ 

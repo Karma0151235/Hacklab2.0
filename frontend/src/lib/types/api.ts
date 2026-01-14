@@ -117,3 +117,48 @@ export interface TimelineEvent {
   companyCode?: string
   companyName?: string
 }
+
+// Vector Database Types
+
+export interface VectorCollection {
+  collectionName: string
+  dbName?: string
+  schema?: CollectionSchema
+  loaded?: boolean
+}
+
+export interface CollectionSchema {
+  fields: FieldSchema[]
+  description?: string
+}
+
+export interface FieldSchema {
+  fieldName: string
+  dataType: string
+  isPrimary?: boolean
+  elementTypeParams?: Record<string, any>
+}
+
+export interface CollectionStats {
+  collectionName: string
+  rowCount: number
+  dataSize?: number
+}
+
+export interface VectorSearchResult {
+  chunk_id: string
+  doc_id: string
+  content: string
+  distance: number
+  company_code?: string
+  document_type?: string
+}
+
+export interface VectorEntity {
+  chunk_id: string
+  doc_id: string
+  content: string
+  chunk_order: number
+  company_code: string
+  document_type: string
+}
