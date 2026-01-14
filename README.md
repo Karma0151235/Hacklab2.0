@@ -2,6 +2,8 @@
 
 Qualitative Market Intelligence Surveillance system for Bursa Malaysia announcements with intelligent agents, RAG-powered search, and real-time alerts.
 
+<strong>[PRESENTATION SLIDES LINK](https://www.canva.com/design/DAG-XKMVhdc/BZiQ4aK3vpN9j_ww8upXAQ/edit?utm_content=DAG-XKMVhdc&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton)</strong>
+
 ## Overview
 
 This MVP ingests Bursa Malaysia announcements through automated web scraping, extracts structured data, performs NLP analysis, and provides an evidence-grounded AI copilot interface for market intelligence queries.
@@ -214,6 +216,25 @@ frontend/ (Next.js Dashboard + Copilot)
 4. **Evidence-Grounded** - Copilot answers must cite sources
 5. **Modular** - Each layer has clear responsibilities
 
+## Tech Stack
+
+### Backend (Python)
+
+- **Framework:** FastAPI, Uvicorn
+- **AI & Agents:** LangChain, LangGraph, DeepSeek 3.2
+- **Database:** PostgreSQL (SQLAlchemy + Alembic), Redis
+- **Vector Database:** Pinecone, Weaviate, Milvus
+- **Scraping & ETL:** Playwright, Docling, PaddleOCR, PyPDF
+- **NLP:** Spacy, NLTK, Sentence-Transformers
+
+### Frontend (TypeScript)
+
+- **Framework:** Next.js 16 (App Router), React 19
+- **Styling:** Tailwind CSS 4, Shadcn/UI (Radix Primitives)
+- **State & Forms:** Zustand, React Hook Form, Zod
+- **Visualization:** Recharts, Framer Motion
+- **Components:** TanStack Table, Lucide React, Sonner
+
 ## API Endpoints
 
 See `ENDPOINTS.md` for complete API reference.
@@ -306,7 +327,6 @@ redis-cli ping  # Should return PONG
 ## Future Enhancements
 
 - [ ] Additional news sources (The Edge, NST, Star)
-- [ ] Manual PDF upload & processing
 - [ ] Scheduled scraping (daily/weekly)
 - [ ] Advanced alert rules & webhooks
 - [ ] Mobile app (React Native)
