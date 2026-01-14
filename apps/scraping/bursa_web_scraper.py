@@ -10,12 +10,15 @@ from typing import List, Dict, Any
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
 
-from apps.scraping.browser.playwright import PlaywrightBrowser
-from apps.scraping.progress.redis_store import ProgressTracker
-from apps.scraping.bursa.listing_crawler import BursaListingCrawler
-from apps.scraping.bursa.announcement_fetcher import BursaAnnouncementFetcher
-from apps.scraping.bursa.html_parser import BursaHTMLParser
-from apps.scraping.common.schemas import StructuredRecord, DocumentObject
+from scraping.browser.playwright import PlaywrightBrowser
+from scraping.progress.redis_store import ProgressTracker
+from scraping.bursa.listing_crawler import BursaListingCrawler
+from scraping.bursa.announcement_fetcher import BursaAnnouncementFetcher
+from scraping.bursa.html_parser import BursaHTMLParser
+from scraping.common.schemas import StructuredRecord, DocumentObject
+from etl.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Category configuration: Financial Results on www.bursamalaysia.com
 CATEGORY_CONFIG = {
@@ -42,6 +45,7 @@ class BursaWebScraper:
         self,
         year: int = 2025,
         max_announcements: int = 10,
+        company_filter: List[str] = None,
         categories: List[str] = None,
         scrape_all_categories: bool = False
     ) -> Dict[str, Any]:
@@ -51,6 +55,7 @@ class BursaWebScraper:
         Args:
             year: Year to filter announcements
             max_announcements: Maximum announcements per category
+            company_filter: List of company names/codes to filter (e.g., ["MAYBANK", "CIMB"])
             categories: Specific categories to scrape (if None and scrape_all_categories=False, scrapes "All Announcements")
             scrape_all_categories: If True, iterates through all available categories
         
@@ -115,6 +120,18 @@ class BursaWebScraper:
                     category_name,
                     max_announcements
                 )
+                
+                # Apply company filter if specified
+                if company_filter:
+                    filtered_announcements = []
+                    for ann in category_announcements:
+                        company_name = ann.get('company_name', '').upper()
+                        # Check if any filter term matches the company name
+                        if any(filter_term.upper() in company_name for filter_term in company_filter):
+                            filtered_announcements.append(ann)
+                    
+                    logger.info(f"[Company Filter] Filtered {len(category_announcements)} → {len(filtered_announcements)} announcements")
+                    category_announcements = filtered_announcements
                 
                 # Highlight announcements on listing page
                 await crawler.highlight_announcements_on_page(page, category_announcements)

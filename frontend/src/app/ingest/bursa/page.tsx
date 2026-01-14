@@ -1,279 +1,308 @@
-"use client"
+'use client'
 
-import * as React from "react"
-import { useRouter } from "next/navigation"
-import { Play, Database, Calendar, Filter, FileText, ArrowLeft, CheckCircle2 } from "lucide-react"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import * as z from "zod"
-import { format } from "date-fns"
-
-import { Button } from "@/components/ui/button"
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
-import { Slider } from "@/components/ui/slider"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { ScrapingProgress, LogEntry } from "@/components/notifications/scraping-progress"
-import { startBursaScrapingJob, getJobPhase, getScrapingLogs } from "@/lib/api/ingestion"
-import { IngestionJob } from "@/lib/types/api"
-import { toast } from "sonner"
-
-const formSchema = z.object({
-  year: z.string({
-    message: "Please select a year to scrape.",
-  }),
-  maxAnnouncements: z.number().min(10).max(5000),
-  companies: z.string().optional(),
-})
+import { useState, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Slider } from '@/components/ui/slider'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Card } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { Badge } from '@/components/ui/badge'
+import { PlayIcon, DownloadIcon, FileTextIcon } from 'lucide-react'
+import {
+  startBursaScraping,
+  getBursaScrapingStatus,
+  getBursaScrapingResults,
+  getBursaScrapingVideoUrl,
+  type BursaScrapingStatus,
+  type BursaAnnouncementRecord
+} from '@/lib/api/ingestion'
 
 export default function BursaScraperPage() {
-  const router = useRouter()
-  const [job, setJob] = React.useState<IngestionJob | null>(null)
-  const [logs, setLogs] = React.useState<LogEntry[]>([])
-  const [isFinishing, setIsFinishing] = React.useState(false)
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      year: "2024",
-      maxAnnouncements: 100,
-      companies: "",
-    },
-  })
-
-  // Poll for updates when job is running
-  React.useEffect(() => {
-    if (!job || job.status !== 'running') return
-
-    const interval = setInterval(() => {
-      setJob(prev => {
-        if (!prev) return null
-        
-        // Simulate progress
-        const newProgress = Math.min(prev.progress + 2, 100)
-        
-        // If completed
-        if (newProgress >= 100 && !isFinishing) {
-           setIsFinishing(true)
-           setTimeout(() => {
-             setJob(j => j ? { ...j, status: 'completed', progress: 100 } : null)
-             toast.success("Scraping job completed successfully")
-           }, 1000)
-        }
-        
-        return { 
-          ...prev, 
-          progress: newProgress,
-          processed_documents: Math.floor((newProgress / 100) * prev.total_documents)
-        }
-      })
-
-      // Add mock logs
-      if (Math.random() > 0.6) {
-        setLogs(prev => [...prev, {
-          timestamp: format(new Date(), 'HH:mm:ss'),
-          message: `Extracted table data from announcement ${Math.floor(Math.random() * 1000)}...`,
-          type: (Math.random() > 0.9 ? 'warning' : 'info') as LogEntry['type']
-        }].slice(-20)) // Keep last 20
-      }
-
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [job, isFinishing])
-
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  // Configuration state
+  const [year, setYear] = useState('2024')
+  const [companyFilter, setCompanyFilter] = useState('')
+  const [maxAnnouncements, setMaxAnnouncements] = useState([10])
+  
+  // Job state
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [jobStatus, setJobStatus] = useState<BursaScrapingStatus | null>(null)
+  const [results, setResults] = useState<BursaAnnouncementRecord[]>([])
+  const [videoAvailable, setVideoAvailable] = useState(false)
+  
+  // UI state
+  const [isStarting, setIsStarting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  // Generate year options (2020-2026)
+  const yearOptions = Array.from({ length: 7 }, (_, i) => 2020 + i)
+  
+  // Start scraping
+  const handleStartScraping = async () => {
+    setIsStarting(true)
+    setError(null)
+    
     try {
-      const newJob = await startBursaScrapingJob({
-        year: parseInt(values.year),
-        maxAnnouncements: values.maxAnnouncements,
-        companyFilter: values.companies ? values.companies.split(',').map(s => s.trim()) : undefined
+      const response = await startBursaScraping({
+        year: parseInt(year),
+        max_announcements: maxAnnouncements[0],
+        company_filter: companyFilter.trim() || undefined
       })
       
-      setJob(newJob)
-      setLogs([{
-        timestamp: format(new Date(), 'HH:mm:ss'),
-        message: "Initializing Bursa Malaysia scraper...",
-        type: 'info'
-      }])
-      toast.success("Scraping job started")
-    } catch (error) {
-      toast.error("Failed to start scraping job")
+      setJobId(response.job_id)
+      // Start polling for status
+      pollStatus(response.job_id)
+    } catch (err: any) {
+      setError(err.message || 'Failed to start scraping')
+    } finally {
+      setIsStarting(false)
     }
   }
-
-  const handleReset = () => {
-    setJob(null)
-    setLogs([])
-    setIsFinishing(false)
-    form.reset()
-  }
-
-  return (
-    <div className="container mx-auto p-6 space-y-8 max-w-5xl animate-in fade-in duration-500">
-      
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={() => router.back()}
-          className="text-slate-400 hover:text-slate-100 ring-1 ring-slate-800"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-           <h1 className="text-3xl font-bold tracking-tight text-slate-100 flex items-center gap-3">
-            <Database className="h-8 w-8 text-cyan-400" />
-            Bursa Malaysia Scraper
-          </h1>
-          <p className="text-slate-400 mt-1">
-            Configure and run automated scraping jobs for Bursa Malaysia announcements.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+  
+  // Poll for job status
+  const pollStatus = async (currentJobId: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const status = await getBursaScrapingStatus(currentJobId)
+        setJobStatus(status)
         
-        {/* Configuration Form */}
-        <div className="lg:col-span-1">
-          <Card className="border-slate-800 bg-slate-950/50 sticky top-6">
-            <CardHeader>
-              <CardTitle>Configuration</CardTitle>
-              <CardDescription>Set parameters for the scraping job.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                  
-                  <FormField
-                    control={form.control}
-                    name="year"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>FY Year</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!!job}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select year" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="2025">2025</SelectItem>
-                            <SelectItem value="2024">2024</SelectItem>
-                            <SelectItem value="2023">2023</SelectItem>
-                            <SelectItem value="2022">2022</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="companies"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Company Filter (Optional)</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g. MAYBANK, CIMB, PCHEM" {...field} disabled={!!job} />
-                        </FormControl>
-                        <FormDescription>
-                          Leave empty to scrape all companies. Comma separated.
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="maxAnnouncements"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Max Announcements: {field.value}</FormLabel>
-                        <FormControl>
-                          <Slider
-                            min={10}
-                            max={1000}
-                            step={10}
-                            defaultValue={[field.value]}
-                            onValueChange={(vals) => field.onChange(vals[0])}
-                            disabled={!!job}
-                            className="py-4"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-bold"
-                    disabled={!!job}
-                  >
-                    {!job ? (
-                      <>
-                        <Play className="mr-2 h-4 w-4" /> Start Scraping
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="mr-2 h-4 w-4" /> Job Created
-                      </>
-                    )}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
+        // Stop polling if complete or failed
+        if (status.status === 'completed' || status.status === 'failed') {
+          clearInterval(interval)
+          
+          // Fetch results if completed
+          if (status.status === 'completed') {
+            const jobResults = await getBursaScrapingResults(currentJobId)
+            setResults(jobResults.announcements)
+            setVideoAvailable(jobResults.video_available)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch status:', err)
+        clearInterval(interval)
+      }
+    }, 2000) // Poll every 2 seconds
+    
+    // Clear interval after 5 minutes
+    setTimeout(() => clearInterval(interval), 5 * 60 * 1000)
+  }
+  
+  // Status badge color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-500'
+      case 'processing': return 'bg-blue-500 animate-pulse'
+      case 'pending': return 'bg-yellow-500'
+      case 'failed': return 'bg-red-500'
+      default: return 'bg-gray-500'
+    }
+  }
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
+      <div className="mx-auto max-w-6xl space-y-8">
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-cyan-400 mb-2">Bursa Malaysia Scraper</h1>
+          <p className="text-gray-400">Extract financial announcements from Bursa Malaysia</p>
         </div>
-
-        {/* Progress / Output */}
-        <div className="lg:col-span-2">
-          {!job ? (
-            <div className="h-full min-h-[400px] flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-lg bg-slate-950/20 text-slate-500">
-               <Database className="h-16 w-16 mb-4 opacity-20" />
-               <h3 className="text-lg font-medium">Ready to scrape</h3>
-               <p className="text-sm">Configure the job on the left and click start.</p>
+        
+        {/* Configuration Card */}
+        <Card className="bg-gray-800/50 border-gray-700 p-6 space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold text-white mb-2">Configuration</h2>
+            <p className="text-sm text-gray-400">Set parameters for the scraping job.</p>
+          </div>
+          
+          {/* FY Year */}
+          <div className="space-y-2">
+            <Label htmlFor="year" className="text-white">FY Year</Label>
+            <Select value={year} onValueChange={setYear}>
+              <SelectTrigger className="bg-gray-900 border-gray-600 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-900 border-gray-600">
+                {yearOptions.map((y) => (
+                  <SelectItem key={y} value={y.toString()} className="text-white">
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Company Filter */}
+          <div className="space-y-2">
+            <Label htmlFor="company-filter" className="text-white">Company Filter (Optional)</Label>
+            <Input
+              id="company-filter"
+              type="text"
+              placeholder="e.g. MAYBANK, CIMB, PCHEM"
+              value={companyFilter}
+              onChange={(e) => setCompanyFilter(e.target.value)}
+              className="bg-gray-900 border-gray-600 text-white placeholder:text-gray-500"
+            />
+            <p className="text-sm text-gray-400">
+              Leave empty to scrape all companies. Comma separated.
+            </p>
+          </div>
+          
+          {/* Max Announcements Slider */}
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <Label className="text-white">Max Announcements: {maxAnnouncements[0]}</Label>
             </div>
-          ) : (
-            <div className="space-y-6">
-              <ScrapingProgress 
-                jobId={job.job_id}
-                status={job.status}
-                phase={getJobPhase(job.progress)}
-                progress={job.progress}
-                documentCount={job.processed_documents}
-                totalDocuments={job.total_documents}
-                logs={logs}
-                onCancel={() => setJob(prev => prev ? {...prev, status: 'failed'} : null)}
-              />
-
-              {job.status === 'completed' && (
-                <Card className="bg-emerald-950/10 border-emerald-500/20">
-                  <CardHeader>
-                    <CardTitle className="text-emerald-400 flex items-center gap-2">
-                      <CheckCircle2 className="h-5 w-5" /> Job Completed
-                    </CardTitle>
-                    <CardDescription>
-                      Successfully processed {job.processed_documents} documents.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardFooter>
-                    <Button variant="outline" onClick={handleReset} className="w-full">
-                      Run Another Job
-                    </Button>
-                  </CardFooter>
-                </Card>
-              )}
+            <Slider
+              value={maxAnnouncements}
+              onValueChange={setMaxAnnouncements}
+              min={1}
+              max={10}
+              step={1}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>1</span>
+              <span>10</span>
+            </div>
+          </div>
+          
+          {/* Start Button */}
+          <Button
+            onClick={handleStartScraping}
+            disabled={isStarting || !!jobId}
+            className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+          >
+            <PlayIcon className="mr-2 h-4 w-4" />
+            {isStarting ? 'Starting...' : 'Start Scraping'}
+          </Button>
+          
+          {/* Error Display */}
+          {error && (
+            <div className="p-4 bg-red-900/20 border border-red-500 rounded text-red-400">
+              {error}
             </div>
           )}
-        </div>
-
+        </Card>
+        
+        {/* Progress Display */}
+        {jobStatus && (
+          <Card className="bg-gray-800/50 border-gray-700 p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-white">Scraping Progress</h3>
+              <Badge className={`${getStatusColor(jobStatus.status)} text-white`}>
+                {jobStatus.status.toUpperCase()}
+              </Badge>
+            </div>
+            
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Progress: {jobStatus.progress}%</span>
+                <span className="text-gray-400">{jobStatus.phase}</span>
+              </div>
+              <Progress value={jobStatus.progress} className="h-2" />
+            </div>
+            
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-900/50 p-3 rounded">
+                <p className="text-xs text-gray-400">Scraped</p>
+                <p className="text-2xl font-bold text-cyan-400">
+                  {jobStatus.scraped_announcements}/{jobStatus.total_announcements}
+                </p>
+              </div>
+              <div className="bg-gray-900/50 p-3 rounded">
+                <p className="text-xs text-gray-400">Errors</p>
+                <p className="text-2xl font-bold text-red-400">
+                  {jobStatus.errors.length}
+                </p>
+              </div>
+            </div>
+            
+            {/* Errors */}
+            {jobStatus.errors.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-red-400">Errors:</p>
+                <div className="bg-red-900/20 border border-red-500 rounded p-3 space-y-1">
+                  {jobStatus.errors.map((err, idx) => (
+                    <p key={idx} className="text-xs text-red-300">{err}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
+        
+        {/* Results Table */}
+        {results.length > 0 && (
+          <Card className="bg-gray-800/50 border-gray-700 p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-white">
+              Results ({results.length} announcements)
+            </h3>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left p-3 text-gray-400">Company</th>
+                    <th className="text-left p-3 text-gray-400">Date</th>
+                    <th className="text-left p-3 text-gray-400">Title</th>
+                    <th className="text-right p-3 text-gray-400">Tables</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.map((announcement, idx) => (
+                    <tr key={idx} className="border-b border-gray-700/50 hover:bg-gray-700/20">
+                      <td className="p-3 text-cyan-400 font-mono">
+                        {announcement.company_code || 'N/A'}
+                      </td>
+                      <td className="p-3 text-gray-300">
+                        {announcement.announcement_date}
+                      </td>
+                      <td className="p-3 text-gray-200">
+                        {announcement.title.substring(0, 60)}...
+                      </td>
+                      <td className="p-3 text-right text-gray-400">
+                        {announcement.tables_count}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+        
+        {/* Video Player */}
+        {videoAvailable && jobId && (
+          <Card className="bg-gray-800/50 border-gray-700 p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-white">Recording</h3>
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="border-gray-600 text-cyan-400"
+              >
+                <a href={getBursaScrapingVideoUrl(jobId)} download>
+                  <DownloadIcon className="mr-2 h-4 w-4" />
+                  Download Video
+                </a>
+              </Button>
+            </div>
+            
+            <div className="relative bg-black rounded overflow-hidden aspect-video">
+              <video
+                controls
+                className="w-full h-full"
+                src={getBursaScrapingVideoUrl(jobId)}
+              >
+                Your browser does not support video playback.
+              </video>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   )

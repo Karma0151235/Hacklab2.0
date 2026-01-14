@@ -1,0 +1,328 @@
+"""
+Bursa Malaysia Scraping API Routes
+Handles scraping job control, status tracking, and results retrieval
+"""
+
+from pathlib import Path
+from typing import List, Optional
+import tempfile
+import uuid
+from datetime import datetime
+import asyncio
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel, Field
+
+from scraping.bursa_web_scraper import BursaWebScraper
+from scraping.scraper_runner import ScraperRunner
+from etl.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+router = APIRouter()
+
+
+# Request/Response Models
+class BursaScrapingRequest(BaseModel):
+    """Request model for starting a Bursa scraping job"""
+    year: int = Field(default=2024, ge=2020, le=2026, description="Financial year to scrape")
+    max_announcements: int = Field(default=10, ge=5, le=100, description="Maximum announcements to scrape")
+    company_filter: Optional[str] = Field(default=None, description="Comma-separated company names/codes (e.g., 'MAYBANK, CIMB, PCHEM')")
+
+
+class BursaScrapingResponse(BaseModel):
+    """Response model for scraping job initiation"""
+    job_id: str
+    status: str
+    message: str
+    year: int
+    max_announcements: int
+    company_filter: Optional[List[str]] = None
+
+
+class BursaScrapingStatus(BaseModel):
+    """Status model for scraping job"""
+    job_id: str
+    status: str  # pending, processing, completed, failed
+    progress: int  # 0-100
+    phase: str  # loading, detecting, scraping, finalizing, complete
+    total_announcements: int
+    scraped_announcements: int
+    errors: List[str] = Field(default_factory=list)
+    created_at: str
+    completed_at: Optional[str] = None
+
+
+class AnnouncementRecord(BaseModel):
+    """Individual announcement record"""
+    company_code: Optional[str]
+    announcement_date: str
+    category: str
+    title: str
+    tables_count: int
+    detail_page_url: str
+
+
+class BursaScrapingResults(BaseModel):
+    """Results model for completed scraping job"""
+    job_id: str
+    status: str
+    total_announcements: int
+    announcements: List[AnnouncementRecord]
+    video_available: bool
+
+
+# In-memory job storage (replace with Redis/DB in production)
+job_statuses = {}
+job_results = {}
+
+
+def parse_company_filter(company_filter: Optional[str]) -> Optional[List[str]]:
+    """Parse comma-separated company filter string"""
+    if not company_filter:
+        return None
+    
+    # Split by comma and strip whitespace
+    companies = [c.strip().upper() for c in company_filter.split(',') if c.strip()]
+    return companies if companies else None
+
+
+def run_scraping_task_sync(job_id: str, year: int, max_announcements: int, company_filter: Optional[List[str]]):
+    """
+    Synchronous wrapper to run scraper in a separate thread with its own event loop
+    This is required for Windows + Playwright + FastAPI compatibility
+    """
+    import sys
+    import asyncio
+    
+    # Create new event loop for this thread
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        loop.run_until_complete(run_scraping_task_async(job_id, year, max_announcements, company_filter))
+    finally:
+        loop.close()
+
+
+async def run_scraping_task_async(job_id: str, year: int, max_announcements: int, company_filter: Optional[List[str]]):
+    """
+    Background task to run the Bursa scraper (async implementation)
+    """
+    try:
+        logger.info(f"[Job {job_id}] Starting scraping: year={year}, max={max_announcements}, companies={company_filter}")
+        
+        # Update status to processing
+        job_statuses[job_id]["status"] = "processing"
+        job_statuses[job_id]["phase"] = "loading"
+        job_statuses[job_id]["progress"] = 10
+        
+        # Initialize scraper
+        scraper = BursaWebScraper()
+        
+        # Run scraping
+        result = await scraper.scrape(
+            year=year,
+            max_announcements=max_announcements,
+            company_filter=company_filter,
+            categories=None,
+            scrape_all_categories=False
+        )
+        
+        # Process results
+        announcement_records = []
+        for record in result.get('structured_records', []):
+            announcement_records.append({
+                'company_code': record.company_code,
+                'announcement_date': record.announcement_date,
+                'category': record.category,
+                'title': record.title,
+                'tables_count': record.tables_count,
+                'detail_page_url': record.detail_page_url
+            })
+        
+        # Store results
+        job_results[job_id] = {
+            'structured_records': result.get('structured_records', []),
+            'document_objects': result.get('document_objects', []),
+            'announcements': announcement_records,
+            'video_base64': result.get('video_base64', ''),
+            'total_announcements': result.get('total_announcements', 0)
+        }
+        
+        # Update status to completed
+        job_statuses[job_id]["status"] = "completed"
+        job_statuses[job_id]["phase"] = "complete"
+        job_statuses[job_id]["progress"] = 100
+        job_statuses[job_id]["scraped_announcements"] = len(announcement_records)
+        job_statuses[job_id]["total_announcements"] = len(announcement_records)
+        job_statuses[job_id]["completed_at"] = datetime.utcnow().isoformat()
+        
+        logger.info(f"[Job {job_id}] Scraping complete: {len(announcement_records)} announcements")
+        
+    except Exception as e:
+        logger.error(f"[Job {job_id}] Scraping failed: {str(e)}")
+        job_statuses[job_id]["status"] = "failed"
+        job_statuses[job_id]["phase"] = "error"
+        job_statuses[job_id]["errors"].append(str(e))
+        import traceback
+        traceback.print_exc()
+
+
+@router.post("/scraping/bursa/start", response_model=BursaScrapingResponse)
+async def start_bursa_scraping(
+    request: BursaScrapingRequest
+):
+    """
+    Start a Bursa Malaysia scraping job
+    
+    - **year**: Financial year to scrape (2020-2026)
+    - **max_announcements**: Maximum announcements to scrape (5-100)
+    - **company_filter**: Optional comma-separated company names/codes
+    
+    Returns job ID for tracking progress
+    """
+    import threading
+    
+    # Generate job ID
+    job_id = f"bursa_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    
+    # Parse company filter
+    companies = parse_company_filter(request.company_filter)
+    
+    # Initialize job status
+    job_statuses[job_id] = {
+        "job_id": job_id,
+        "status": "pending",
+        "progress": 0,
+        "phase": "initializing",
+        "total_announcements": request.max_announcements,
+        "scraped_announcements": 0,
+        "errors": [],
+        "created_at": datetime.utcnow().isoformat(),
+        "completed_at": None,
+        "year": request.year,
+        "company_filter": companies
+    }
+    
+    # Start scraping in a separate thread (required for Windows + Playwright)
+    thread = threading.Thread(
+        target=run_scraping_task_sync,
+        args=(job_id, request.year, request.max_announcements, companies),
+        daemon=True
+    )
+    thread.start()
+    
+    logger.info(f"[Job {job_id}] Created scraping job: year={request.year}, max={request.max_announcements}, companies={companies}")
+    
+    return BursaScrapingResponse(
+        job_id=job_id,
+        status="pending",
+        message=f"Scraping job started for year {request.year}",
+        year=request.year,
+        max_announcements=request.max_announcements,
+        company_filter=companies
+    )
+
+
+@router.get("/scraping/bursa/status/{job_id}", response_model=BursaScrapingStatus)
+async def get_bursa_scraping_status(job_id: str):
+    """
+    Get the status of a Bursa scraping job
+    
+    - **job_id**: Job ID returned from start endpoint
+    """
+    if job_id not in job_statuses:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    
+    job = job_statuses[job_id]
+    
+    return BursaScrapingStatus(
+        job_id=job["job_id"],
+        status=job["status"],
+        progress=job["progress"],
+        phase=job["phase"],
+        total_announcements=job["total_announcements"],
+        scraped_announcements=job["scraped_announcements"],
+        errors=job["errors"],
+        created_at=job["created_at"],
+        completed_at=job.get("completed_at")
+    )
+
+
+@router.get("/scraping/bursa/results/{job_id}", response_model=BursaScrapingResults)
+async def get_bursa_scraping_results(job_id: str):
+    """
+    Get the results of a completed Bursa scraping job
+    
+    - **job_id**: Job ID returned from start endpoint
+    """
+    if job_id not in job_statuses:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    
+    job = job_statuses[job_id]
+    
+    if job["status"] != "completed":
+        raise HTTPException(status_code=400, detail=f"Job {job_id} is not completed yet (status: {job['status']})")
+    
+    if job_id not in job_results:
+        raise HTTPException(status_code=404, detail=f"Results for job {job_id} not found")
+    
+    results = job_results[job_id]
+    
+    return BursaScrapingResults(
+        job_id=job_id,
+        status="completed",
+        total_announcements=results['total_announcements'],
+        announcements=[AnnouncementRecord(**ann) for ann in results['announcements']],
+        video_available=len(results.get('video_base64', '')) > 0
+    )
+
+
+@router.get("/scraping/bursa/video/{job_id}")
+async def get_bursa_scraping_video(job_id: str):
+    """
+    Get the video recording of a scraping job
+    
+    - **job_id**: Job ID returned from start endpoint
+    
+    Returns video file as WebM (supports seeking)
+    """
+    from fastapi.responses import Response
+    import base64
+    
+    if job_id not in job_results:
+        raise HTTPException(status_code=404, detail=f"Results for job {job_id} not found")
+    
+    results = job_results[job_id]
+    video_base64 = results.get('video_base64', '')
+    
+    if not video_base64:
+        raise HTTPException(status_code=404, detail=f"No video available for job {job_id}")
+    
+    # Decode base64 video
+    video_bytes = base64.b64decode(video_base64)
+    
+    # Return as inline video (not attachment) to support seeking
+    return Response(
+        content=video_bytes,
+        media_type="video/webm",
+        headers={
+            "Content-Disposition": f"inline; filename=bursa_scraping_{job_id}.webm",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(len(video_bytes))
+        }
+    )
+
+
+@router.get("/scraping/bursa/jobs")
+async def list_bursa_scraping_jobs():
+    """
+    List all Bursa scraping jobs
+    """
+    return {
+        "jobs": list(job_statuses.values())
+    }
