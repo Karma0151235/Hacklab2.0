@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   Building2,
   FileText,
-  TrendingUp,
 } from 'lucide-react'
 import Link from 'next/link'
 import { MetricCard } from '@/components/data-display/metric-card'
@@ -14,22 +13,19 @@ import { getFilings } from '@/lib/api/filings'
 import { getAlerts } from '@/lib/api/alerts'
 
 async function DashboardContent() {
-  // Fetch data (using mock APIs)
+  // Fetch data from API
   const [companies, filings, alerts] = await Promise.all([
     getCompanies(),
     getFilings(),
     getAlerts(),
   ])
 
-  // Calculate metrics
+  // Calculate metrics from real data
   const totalCompanies = companies.length
   const totalFilings = filings.length
   const activeAlerts = alerts.filter((a) => a.status === 'active').length
-  const averageHealthScore =
-    companies.reduce((sum, c) => sum + (c.financial_health_score || 0), 0) /
-    companies.filter((c) => c.financial_health_score).length
 
-  // Get recent data
+  // Get recent data (latest 5 filings)
   const recentFilings = filings
     .sort(
       (a, b) =>
@@ -59,34 +55,24 @@ async function DashboardContent() {
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <MetricCard
             label="Total Companies"
             value={totalCompanies}
             icon={Building2}
-            trend={{ value: 12, direction: 'up' }}
             variant="default"
           />
           <MetricCard
             label="Total Filings"
             value={totalFilings}
             icon={FileText}
-            trend={{ value: 8, direction: 'up' }}
             variant="default"
           />
           <MetricCard
             label="Active Alerts"
             value={activeAlerts}
             icon={AlertTriangle}
-            trend={{ value: 5, direction: 'down' }}
             variant={activeAlerts > 10 ? 'error' : 'success'}
-          />
-          <MetricCard
-            label="Avg Health Score"
-            value={Math.round(averageHealthScore)}
-            icon={TrendingUp}
-            trend={{ value: 3, direction: 'up' }}
-            variant="success"
           />
         </div>
 

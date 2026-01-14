@@ -69,7 +69,7 @@ export function CompanyCard({ company, className }: CompanyCardProps) {
         )} */}
 
         {/* Metrics Grid */}
-        <div className="mb-3 grid grid-cols-3 gap-2">
+        <div className="mb-3 grid grid-cols-2 gap-2">
           {/* Filings */}
           <div className="rounded-md border border-border-secondary bg-bg-elevated p-2">
             <div className="mb-0.5 flex items-center gap-1">
@@ -101,8 +101,8 @@ export function CompanyCard({ company, className }: CompanyCardProps) {
             </p>
           </div>
 
-          {/* Health Score */}
-          <div className="rounded-md border border-border-secondary bg-bg-elevated p-2">
+          {/* Health Score - Temporarily hidden */}
+          {/* <div className="rounded-md border border-border-secondary bg-bg-elevated p-2">
             <div className="mb-0.5 flex items-center gap-1">
               <TrendingUp className="h-3 w-3 text-text-tertiary" />
               <p className="font-mono text-xs font-semibold uppercase tracking-wider text-text-tertiary">
@@ -112,7 +112,7 @@ export function CompanyCard({ company, className }: CompanyCardProps) {
             <p className={cn('font-mono text-base font-bold', healthScoreColor)}>
               {company.financial_health_score ?? 'N/A'}
             </p>
-          </div>
+          </div> */}
         </div>
 
         {/* Latest Filing Date */}
