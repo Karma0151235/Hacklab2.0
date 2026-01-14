@@ -77,23 +77,22 @@ class MilvusPDFManager:
             return False
 
     def _create_text_collection(self):
-        """Create collection for text chunks with embeddings"""
+        """Create collection for text chunks with embeddings - OLD SCHEMA"""
         try:
+            # OLD SCHEMA - matches existing database that RAG agent queries
             fields = [
-                self.FieldSchema(name="chunk_id", dtype=self.DataType.VARCHAR, max_length=255, is_primary=True),
-                self.FieldSchema(name="filename", dtype=self.DataType.VARCHAR, max_length=255),
-                self.FieldSchema(name="company_name", dtype=self.DataType.VARCHAR, max_length=255),
-                self.FieldSchema(name="content", dtype=self.DataType.VARCHAR, max_length=10000),
+                self.FieldSchema(name="chunk_id", dtype=self.DataType.VARCHAR, max_length=200, is_primary=True),
+                self.FieldSchema(name="doc_id", dtype=self.DataType.VARCHAR, max_length=100),
                 self.FieldSchema(name="embedding", dtype=self.DataType.FLOAT_VECTOR, dim=384),
-                self.FieldSchema(name="page_number", dtype=self.DataType.INT32),
-                self.FieldSchema(name="source", dtype=self.DataType.VARCHAR, max_length=50),
-                self.FieldSchema(name="doc_id", dtype=self.DataType.VARCHAR, max_length=255),
-                self.FieldSchema(name="metadata_json", dtype=self.DataType.VARCHAR, max_length=2000),
+                self.FieldSchema(name="content", dtype=self.DataType.VARCHAR, max_length=10000),
+                self.FieldSchema(name="chunk_order", dtype=self.DataType.INT32),
+                self.FieldSchema(name="company_code", dtype=self.DataType.VARCHAR, max_length=10),
+                self.FieldSchema(name="document_type", dtype=self.DataType.VARCHAR, max_length=50),
             ]
 
             schema = self.CollectionSchema(
                 fields,
-                description="PDF text chunks with embeddings"
+                description="PDF text chunks with embeddings (OLD SCHEMA)"
             )
 
             collection = self.Collection(self.TEXT_COLLECTION, schema=schema)
@@ -149,27 +148,30 @@ class MilvusPDFManager:
             raise
 
     def insert_text_chunks(self, chunks_data: List[Dict[str, Any]]) -> bool:
+        """
+        Insert text chunks into collection
+        Maps NEW field names to OLD schema for compatibility
+        """
         if not chunks_data:
             return False
 
         entities = []
         for chunk in chunks_data:
+            # Map new field names to old schema
             entities.append({
-                "chunk_id": str(chunk["chunk_id"]),
-                "filename": chunk["filename"][:255],
-                "company_name": chunk["company_name"][:255],
-                "content": chunk["content"][:10000],
-                "embedding": chunk["embedding"],
-                "page_number": int(chunk.get("page_number", 0)),
-                "source": chunk.get("source", "pdf"),
-                "doc_id": chunk["doc_id"],
-                "metadata_json": json.dumps(chunk.get("metadata", {})),
+                "chunk_id": str(chunk.get("chunk_id", ""))[:200],
+                "doc_id": chunk.get("filename", chunk.get("doc_id", "unknown"))[:100],  # filename → doc_id
+                "embedding": chunk.get("embedding", []),
+                "content": chunk.get("content", "")[:10000],
+                "chunk_order": int(chunk.get("page_number", chunk.get("chunk_order", 0))),  # page_number → chunk_order
+                "company_code": chunk.get("company_name", chunk.get("company_code", "UNKNOWN"))[:10],  # company_name → company_code
+                "document_type": chunk.get("source", chunk.get("document_type", "pdf"))[:50],  # source → document_type
             })
 
         collection = self.Collection(self.TEXT_COLLECTION)
         collection.insert(entities)
         collection.flush()
-        collection.load()   # ✅
+        collection.load()
 
         return True
 

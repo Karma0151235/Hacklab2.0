@@ -67,6 +67,12 @@ class BursaListingCrawler:
         # Extract announcements from table
         announcements = await self._extract_announcements_from_table(page, category_name)
         
+        # NOTE: Bursa Malaysia website displays 20 results per page by default
+        # To scrape more than 20, would need to implement pagination:
+        # - Click "Next Page" button or "Load More" button
+        # - OR use AJAX pagination to load additional results
+        # Current implementation only extracts visible announcements on first page
+        
         return announcements[:max_announcements]
     
     async def _extract_announcements_from_table(

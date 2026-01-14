@@ -12,6 +12,7 @@ Flow:
 
 import sys
 import os
+import json
 from pathlib import Path
 from typing import List, Dict, Any
 import uuid
@@ -41,7 +42,7 @@ class BursaIngestion:
         self.text_chunker = TextChunker(chunk_size=500, overlap=50)
         self.embedding_generator = EmbeddingGenerator()
         
-        # Use MilvusPDFManager which handles pdf_text_chunks and pdf_table_chunks
+        # MilvusPDFManager now uses OLD schema compatible with RAG agent
         from etl.db.milvus_pdf_manager import MilvusPDFManager
         self.milvus_manager = MilvusPDFManager(host=milvus_host, port=milvus_port)
         
@@ -51,6 +52,7 @@ class BursaIngestion:
             "chunks_created": 0,
             "embeddings_generated": 0,
             "records_inserted": 0,
+            "tables_inserted": 0,  # Track table chunks separately
         }
     
     def ingest_documents(self, document_objects: List[DocumentObject]) -> Dict[str, Any]:
@@ -64,18 +66,6 @@ class BursaIngestion:
             Dict with ingestion stats and status
         """
         logger.info(f"Starting ingestion of {len(document_objects)} documents...")
-        
-        if not self.milvus_manager.connected:
-            logger.error("MilvusDB not connected, cannot ingest")
-            return {
-                "status": "error",
-                "message": "MilvusDB not connected",
-                "stats": self.stats
-            }
-        
-        # Ensure collections exist
-        logger.info("Ensuring pdf_text_chunks collection exists...")
-        self.milvus_manager.create_collections(dim=self.embedding_generator.embedding_dim)
         
         # Process each document
         for idx, doc_obj in enumerate(document_objects, 1):
@@ -91,29 +81,50 @@ class BursaIngestion:
         }
     
     def _ingest_single_document(self, doc_obj: DocumentObject) -> None:
-        """Ingest a single document"""
+        """Ingest a single document (text + tables)"""
         try:
-            # Chunk the raw text
+            # === TEXT CHUNKS ===
             chunks_data = self._chunk_and_embed_text(
                 doc_obj.raw_text,
                 doc_obj.doc_id,
                 doc_obj.company_code or "UNKNOWN"
             )
             
-            if not chunks_data:
-                logger.warning(f"No chunks created for {doc_obj.doc_id}")
-                return
-            
-            # Insert into pdf_text_chunks collection
-            if self.milvus_manager.insert_text_chunks(chunks_data):
-                inserted_count = len(chunks_data)
-                self.stats["documents_processed"] += 1
-                self.stats["chunks_created"] += inserted_count
-                self.stats["embeddings_generated"] += inserted_count
-                self.stats["records_inserted"] += inserted_count
-                logger.info(f"✓ Inserted {inserted_count} chunks for {doc_obj.doc_id}")
+            if chunks_data:
+                # Insert into pdf_text_chunks collection
+                if self.milvus_manager.insert_text_chunks(chunks_data):
+                    inserted_count = len(chunks_data)
+                    self.stats["chunks_created"] += inserted_count
+                    self.stats["embeddings_generated"] += inserted_count
+                    self.stats["records_inserted"] += inserted_count
+                    logger.info(f"  ✓ Inserted {inserted_count} text chunks")
+                else:
+                    logger.error(f"  ✗ Failed to insert text chunks")
             else:
-                logger.error(f"✗ Failed to insert chunks for {doc_obj.doc_id}")
+                logger.warning(f"  ⚠ No text chunks created")
+            
+            # === TABLE CHUNKS ===
+            if doc_obj.tables and len(doc_obj.tables) > 0:
+                tables_data = self._process_and_embed_tables(
+                    doc_obj.tables,
+                    doc_obj.doc_id,
+                    doc_obj.company_code or "UNKNOWN"
+                )
+                
+                if tables_data:
+                    # Insert into pdf_table_chunks collection
+                    if self.milvus_manager.insert_table_chunks(tables_data):
+                        table_count = len(tables_data)
+                        self.stats["tables_inserted"] += table_count
+                        self.stats["embeddings_generated"] += table_count
+                        logger.info(f"  ✓ Inserted {table_count} table chunks")
+                    else:
+                        logger.error(f"  ✗ Failed to insert table chunks")
+                else:
+                    logger.warning(f"  ⚠ No table chunks created")
+            
+            # Update document processed count
+            self.stats["documents_processed"] += 1
                 
         except Exception as e:
             logger.error(f"Error ingesting document {doc_obj.doc_id}: {str(e)}")
@@ -166,19 +177,18 @@ class BursaIngestion:
                 logger.error(f"Embedding count mismatch: {len(embeddings)} vs {len(chunks)}")
                 return []
             
-            # Prepare data for MilvusPDFManager (pdf_text_chunks schema)
+            # Prepare data using STANDARD field names
+            # MilvusPDFManager.insert_text_chunks() will map these to old schema
             chunks_data = []
             for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
                 chunk_dict = {
                     "chunk_id": f"{doc_id}_chunk_{idx:04d}_{uuid.uuid4().hex[:8]}",
-                    "filename": f"{doc_id}.txt",
-                    "company_name": company_code,
+                    "filename": f"{doc_id}.txt",  # Will map to doc_id
+                    "company_name": company_code or "UNKNOWN",  # Will map to company_code
                     "content": chunk.content,
                     "embedding": embedding,
-                    "page_number": chunk.page_number,
-                    "source": "bursa_scraper",
-                    "doc_id": doc_id,
-                    "metadata": chunk.metadata,
+                    "page_number": idx,  # Will map to chunk_order
+                    "source": "bursa_scraper",  # Will map to document_type
                 }
                 chunks_data.append(chunk_dict)
             
@@ -189,6 +199,97 @@ class BursaIngestion:
             import traceback
             traceback.print_exc()
             return []
+    
+    def _process_and_embed_tables(
+        self,
+        tables: List[Dict[str, Any]],
+        doc_id: str,
+        company_code: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Process tables and generate embeddings for pdf_table_chunks collection
+        
+        Args:
+            tables: List of table dicts from DocumentObject
+            doc_id: Document ID
+            company_code: Company code
+            
+        Returns:
+            List of table dicts ready for MilvusPDFManager.insert_table_chunks()
+        """
+        try:
+            if not tables or len(tables) == 0:
+                logger.warning(f"No tables for {doc_id}")
+                return []
+            
+            # Convert tables to text for embedding
+            table_texts = []
+            for table in tables:
+                # Convert table to readable text
+                table_text = self._table_to_text(table)
+                table_texts.append(table_text)
+            
+            # Generate embeddings for all tables
+            logger.debug(f"  Generating embeddings for {len(table_texts)} tables...")
+            embeddings = self.embedding_generator.generate_batch(table_texts)
+            
+            if len(embeddings) != len(tables):
+                logger.error(f"Embedding count mismatch: {len(embeddings)} vs {len(tables)}")
+                return []
+            
+            # Prepare data for pdf_table_chunks collection
+            tables_data = []
+            for idx, (table, embedding) in enumerate(zip(tables, embeddings)):
+                # Serialize table data
+                import json
+                table_data_json = json.dumps(table.get('rows', []))
+                
+                table_dict = {
+                    "table_id": f"{doc_id}_table_{idx:04d}_{uuid.uuid4().hex[:8]}",
+                    "filename": f"{doc_id}.txt",
+                    "company_name": company_code,
+                    "table_data": table_data_json,
+                    "table_index": idx,
+                    "source": "bursa_scraper",
+                    "doc_id": doc_id,
+                    "metadata": {"title": table.get('title', f"Table {idx+1}")},
+                    "embedding": embedding,
+                }
+                tables_data.append(table_dict)
+            
+            return tables_data
+            
+        except Exception as e:
+            logger.error(f"Failed to process tables: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _table_to_text(self, table: Dict[str, Any]) -> str:
+        """Convert table dict to readable text for embedding"""
+        try:
+            title = table.get('title', 'Table')
+            rows = table.get('rows', [])
+            
+            # Build text representation
+            lines = [f"Table: {title}"]
+            
+            for row in rows:
+                if isinstance(row, dict):
+                    # Key-value pairs
+                    for key, value in row.items():
+                        if value:
+                            lines.append(f"{key}: {value}")
+                elif isinstance(row, list):
+                    # List of values
+                    lines.append(" | ".join(str(v) for v in row if v))
+            
+            return "\n".join(lines)
+            
+        except Exception as e:
+            logger.error(f"Error converting table to text: {str(e)}")
+            return "Table data unavailable"
+
 
 
 def ingest_bursa_scraping_results(document_objects: List[DocumentObject]) -> Dict[str, Any]:

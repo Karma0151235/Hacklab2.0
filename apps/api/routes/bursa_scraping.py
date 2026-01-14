@@ -165,6 +165,14 @@ async def run_scraping_task_async(job_id: str, year: int, max_announcements: int
                 job_statuses[job_id]["progress"] = 85
                 
                 # Import ingestion module
+                import sys
+                from pathlib import Path
+                
+                # Add apps directory to path if not already there
+                apps_dir = Path(__file__).parent.parent.parent
+                if str(apps_dir) not in sys.path:
+                    sys.path.insert(0, str(apps_dir))
+                
                 from bursa_ingestion import ingest_bursa_scraping_results
                 
                 # Ingest into MilvusDB
