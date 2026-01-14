@@ -151,23 +151,25 @@ If information is insufficient, clearly state this."""
         try:
             search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
 
+            # Use OLD schema fields: doc_id, company_code, document_type
             results = self.text_collection.search(
                 data=[query_embedding],
                 anns_field="embedding",
                 param=search_params,
                 limit=top_k,
-                output_fields=["chunk_id", "filename", "company_name", "content", "page_number", "source"]
+                output_fields=["chunk_id", "doc_id", "company_code", "content", "chunk_order", "document_type"]
             )
 
             chunks = []
             if results and len(results) > 0:
                 for hit in results[0]:
+                    # Map old schema fields to expected format
                     chunks.append({
                         "chunk_id": hit.entity.get("chunk_id"),
-                        "filename": hit.entity.get("filename"),
-                        "company_name": hit.entity.get("company_name"),
+                        "filename": hit.entity.get("doc_id", "unknown"),  # Map doc_id -> filename
+                        "company_name": hit.entity.get("company_code", "unknown"),  # Map company_code -> company_name
                         "content": hit.entity.get("content"),
-                        "page_number": hit.entity.get("page_number"),
+                        "page_number": hit.entity.get("chunk_order", 0),  # Map chunk_order -> page_number
                         "distance": hit.distance,
                         "collection": "pdf_text_chunks"
                     })
@@ -184,6 +186,7 @@ If information is insufficient, clearly state this."""
         try:
             search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
 
+            # pdf_table_chunks uses NEW schema: table_id, filename, company_name, table_data, table_index
             results = self.table_collection.search(
                 data=[query_embedding],
                 anns_field="embedding",
@@ -197,16 +200,16 @@ If information is insufficient, clearly state this."""
                 for hit in results[0]:
                     table_data_str = hit.entity.get("table_data", "[]")
                     try:
-                        table_data = json.loads(table_data_str)
+                        table_data = json.loads(table_data_str) if table_data_str else []
                     except:
                         table_data = []
 
                     chunks.append({
                         "table_id": hit.entity.get("table_id"),
-                        "filename": hit.entity.get("filename"),
-                        "company_name": hit.entity.get("company_name"),
+                        "filename": hit.entity.get("filename", "unknown"),
+                        "company_name": hit.entity.get("company_name", "unknown"),
                         "table_data": table_data,
-                        "table_index": hit.entity.get("table_index"),
+                        "table_index": hit.entity.get("table_index", 0),
                         "distance": hit.distance,
                         "collection": "pdf_table_chunks"
                     })

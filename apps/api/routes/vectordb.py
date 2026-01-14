@@ -224,12 +224,22 @@ async def query_entities_endpoint(request: QueryRequest):
         collection = Collection(request.collectionName)
         collection.load()
         
-        # Default output fields if not specified
-        output_fields = request.outputFields if request.outputFields else ["*"]
+        # Get valid fields from schema
+        valid_fields = {field.name for field in collection.schema.fields}
+        
+        # Determine output fields
+        if not request.outputFields or request.outputFields == ["*"]:
+            output_fields = ["*"]
+        else:
+            # Filter requested fields to only those that exist in the collection
+            # This prevents errors like "field filename not exist" when querying old collections
+            output_fields = [f for f in request.outputFields if f in valid_fields]
+            
+            # If no valid fields remain, fallback to all (or at least PK)
+            if not output_fields:
+                output_fields = ["*"]
         
         # Query
-        # For Milvus, we need a valid expression. To get all, we can use a tautology
-        # or just specify limit without expression
         try:
             if request.filter:
                 results = collection.query(

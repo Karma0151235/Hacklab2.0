@@ -18,9 +18,9 @@ class AgentConfig:
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-    # GLM Models (ZhipuAI via OpenRouter)
-    GLM_4_5_MODEL = "zhipuai/glm-4-plus"  # GLM-4 Plus (closest to GLM-4.5)
-    GLM_4_7_MODEL = "zhipuai/glm-4"  # GLM-4 (stable version)
+    # Models via OpenRouter
+    GLM_4_5_MODEL = "deepseek/deepseek-v3.2"  # Fast and cost-effective
+    GLM_4_7_MODEL = "deepseek/deepseek-v3.2"  # Same model for consistency
 
     # Milvus Configuration
     MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")

@@ -32,7 +32,7 @@ const navigation = [
       { name: 'Filings', href: '/filings', icon: FileText },
       { name: 'Alerts', href: '/alerts', icon: AlertTriangle },
       { name: 'Copilot', href: '/copilot', icon: Bot },
-      { name: 'SQL Query', href: '/sql', icon: Database },
+      // { name: 'SQL Query', href: '/sql', icon: Database },
     ],
   },
   {

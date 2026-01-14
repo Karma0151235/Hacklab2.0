@@ -126,12 +126,7 @@ export function ChatInput({
           </button>
         </div>
 
-        {/* Keyboard Hint */}
-        <div className="text-center font-mono text-xs text-text-tertiary">
-          Press <kbd className="rounded bg-bg-elevated px-1.5 py-0.5">Enter</kbd> to
-          send, <kbd className="rounded bg-bg-elevated px-1.5 py-0.5">Shift+Enter</kbd>{' '}
-          for new line
-        </div>
+       
       </form>
     </div>
   )
