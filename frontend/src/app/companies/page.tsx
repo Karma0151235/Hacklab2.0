@@ -1,11 +1,11 @@
 'use client'
 
-import { Search, Building2 } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { Search, Building2, Loader2 } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { CompanyCard } from '@/components/data-display/company-card'
 import { DataTable } from '@/components/data-display/data-table'
-import { mockCompanies } from '@/lib/mock-data/companies'
+import { getCompanies } from '@/lib/api/companies'
 import { Company } from '@/lib/types/api'
 import { cn } from '@/lib/utils'
 
@@ -14,20 +14,41 @@ type ViewMode = 'grid' | 'table'
 export default function CompaniesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Fetch companies from API
+  useEffect(() => {
+    async function fetchCompanies() {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const data = await getCompanies()
+        setCompanies(data)
+      } catch (err) {
+        console.error('Failed to fetch companies:', err)
+        setError('Failed to load companies')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchCompanies()
+  }, [])
 
   // Filter companies based on search
   const filteredCompanies = useMemo(() => {
-    if (!searchQuery) return mockCompanies
+    if (!searchQuery) return companies
 
     const query = searchQuery.toLowerCase()
-    return mockCompanies.filter(
+    return companies.filter(
       (company) =>
         company.company_name.toLowerCase().includes(query) ||
         company.ticker.toLowerCase().includes(query) ||
         company.company_code.toLowerCase().includes(query) ||
         company.sector.toLowerCase().includes(query)
     )
-  }, [searchQuery])
+  }, [searchQuery, companies])
 
   // Table columns configuration
   const columns = [
@@ -59,27 +80,28 @@ export default function CompaniesPage() {
         </div>
       ),
     },
-    {
-      key: 'sector',
-      label: 'Sector',
-      sortable: true,
-      render: (company: Company) => (
-        <span className="font-sans text-text-secondary">{company.sector}</span>
-      ),
-    },
-    {
-      key: 'market_cap',
-      label: 'Market Cap',
-      sortable: true,
-      render: (company: Company) =>
-        company.market_cap ? (
-          <span className="font-mono text-text-primary">
-            RM {(company.market_cap / 1000000000).toFixed(2)}B
-          </span>
-        ) : (
-          <span className="text-text-tertiary">N/A</span>
-        ),
-    },
+    // Temporarily hidden
+    // {
+    //   key: 'sector',
+    //   label: 'Sector',
+    //   sortable: true,
+    //   render: (company: Company) => (
+    //     <span className="font-sans text-text-secondary">{company.sector}</span>
+    //   ),
+    // },
+    // {
+    //   key: 'market_cap',
+    //   label: 'Market Cap',
+    //   sortable: true,
+    //   render: (company: Company) =>
+    //     company.market_cap ? (
+    //       <span className="font-mono text-text-primary">
+    //         RM {(company.market_cap / 1000000000).toFixed(2)}B
+    //       </span>
+    //     ) : (
+    //       <span className="text-text-tertiary">N/A</span>
+    //     ),
+    // },
     {
       key: 'filings_count',
       label: 'Filings',
@@ -107,27 +129,38 @@ export default function CompaniesPage() {
       ),
       className: 'text-center',
     },
-    {
-      key: 'financial_health_score',
-      label: 'Health',
-      sortable: true,
-      render: (company: Company) => {
-        const score = company.financial_health_score
-        if (!score) return <span className="text-text-tertiary">N/A</span>
-
-        const color =
-          score >= 75 ? 'text-success' : score >= 50 ? 'text-warning' : 'text-error'
-
-        return <span className={cn('font-mono font-bold', color)}>{score}</span>
-      },
-      className: 'text-center',
-    },
   ]
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-        <div className="flex items-start justify-between">
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex min-h-[400px] items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="mx-auto h-12 w-12 animate-spin text-accent-primary" />
+            <p className="mt-4 font-sans text-lg text-text-secondary">
+              Loading companies...
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && !isLoading && (
+        <div className="rounded-lg border border-error/40 bg-bg-secondary p-8 text-center">
+          <Building2 className="mx-auto mb-4 h-16 w-16 text-error opacity-50" />
+          <h3 className="mb-2 font-sans text-xl font-semibold text-text-primary">
+            Error Loading Companies
+          </h3>
+          <p className="font-sans text-sm text-text-tertiary">{error}</p>
+        </div>
+      )}
+
+      {/* Main Content */}
+      {!isLoading && !error && (
+        <>
+          {/* Page Header */}
+          <div className="flex items-start justify-between">
           <div>
             <h1 className="mb-1 font-sans text-2xl font-bold text-text-primary">
               Companies
@@ -227,6 +260,8 @@ export default function CompaniesPage() {
             itemsPerPage={15}
           />
         )}
+        </>
+      )}
     </div>
   )
 }

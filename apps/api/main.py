@@ -4,7 +4,7 @@ FastAPI main application
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import pdf_ingestion, bursa_scraping, vectordb, copilot
+from api.routes import pdf_ingestion, bursa_scraping, vectordb, copilot, filings, companies
 
 app = FastAPI(
     title="Financial Intelligence ETL API",
@@ -26,6 +26,8 @@ app.include_router(pdf_ingestion.router, prefix="/api/v1", tags=["PDF Ingestion"
 app.include_router(bursa_scraping.router, prefix="/api/v1", tags=["Bursa Scraping"])
 app.include_router(vectordb.router, prefix="/api/v1", tags=["Vector Database"])
 app.include_router(copilot.router, prefix="/api/v1", tags=["Copilot"])
+app.include_router(filings.router, prefix="/api/v1", tags=["Filings"])
+app.include_router(companies.router, prefix="/api/v1", tags=["Companies"])
 
 @app.get("/")
 async def root():

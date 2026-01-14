@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 interface TimelineCardProps {
   filing: Filing
   showCompanyName?: boolean
+  showFullTitle?: boolean
   className?: string
 }
 
@@ -28,6 +29,7 @@ const sentimentStyles = {
 export function TimelineCard({
   filing,
   showCompanyName = true,
+  showFullTitle = false,
   className,
 }: TimelineCardProps) {
   const sentimentStyle = filing.sentiment
@@ -36,7 +38,7 @@ export function TimelineCard({
 
   return (
     <Link
-      href={`/filings/${filing.filing_id}`}
+      href={`/filings/${encodeURIComponent(filing.filing_id)}`}
       className={cn(
         'group relative block overflow-hidden rounded-[var(--radius)] border border-border-primary bg-gradient-to-br from-bg-tertiary to-bg-secondary',
         'transition-all duration-300 hover:border-accent-primary/40 hover:shadow-[0_0_20px_rgba(0,217,255,0.1)]',
@@ -74,8 +76,11 @@ export function TimelineCard({
           </div>
         </div>
 
-        {/* Title - Clean White */}
-        <h3 className="mb-2 font-sans text-base font-bold leading-snug text-text-primary transition-colors group-hover:text-accent-primary">
+        {/* Title - Full or Truncated */}
+        <h3 className={cn(
+          "mb-2 font-sans text-base font-bold leading-snug text-text-primary transition-colors group-hover:text-accent-primary",
+          !showFullTitle && "line-clamp-2"
+        )}>
           {filing.title}
         </h3>
 

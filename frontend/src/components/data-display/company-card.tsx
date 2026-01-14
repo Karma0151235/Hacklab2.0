@@ -50,14 +50,14 @@ export function CompanyCard({ company, className }: CompanyCardProps) {
             {company.company_name}
           </h3>
 
-          {/* Sector */}
-          <p className="font-sans text-xs font-medium text-text-secondary">
+          {/* Sector - Temporarily hidden */}
+          {/* <p className="font-sans text-xs font-medium text-text-secondary">
             {company.sector}
-          </p>
+          </p> */}
         </div>
 
-        {/* Market Cap */}
-        {company.market_cap && (
+        {/* Market Cap - Temporarily hidden */}
+        {/* {company.market_cap && (
           <div className="mb-3 rounded-md border border-border-secondary bg-bg-elevated p-2">
             <p className="mb-0.5 font-mono text-xs font-semibold uppercase tracking-wider text-text-tertiary">
               Market Cap
@@ -66,7 +66,7 @@ export function CompanyCard({ company, className }: CompanyCardProps) {
               RM {(company.market_cap / 1000000000).toFixed(2)}B
             </p>
           </div>
-        )}
+        )} */}
 
         {/* Metrics Grid */}
         <div className="mb-3 grid grid-cols-3 gap-2">

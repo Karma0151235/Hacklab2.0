@@ -275,8 +275,8 @@ export async function hasCollectionData(collectionName: string): Promise<boolean
 }
 
 /**
- * Get filings from vector database
- * Queries pdf_text_chunks collection and aggregates by doc_id to create Filing objects
+ * Get filings from backend API
+ * Backend aggregates text chunks by doc_id to create Filing objects
  */
 export async function getFilings(options?: {
   companyCode?: string
@@ -287,99 +287,29 @@ export async function getFilings(options?: {
   try {
     const { companyCode, documentType, limit = 100, offset = 0 } = options || {}
 
-    // Build filter expression
-    let filter = ''
-    const filters: string[] = []
-    
-    if (companyCode) {
-      filters.push(`company_name == "${companyCode}"`)
-    }
-    
-    if (documentType) {
-      filters.push(`source == "${documentType}"`)
-    }
-    
-    if (filters.length > 0) {
-      filter = filters.join(' && ')
-    }
+    // Build query parameters
+    const params = new URLSearchParams()
+    if (companyCode) params.append('company_code', companyCode)
+    if (documentType) params.append('document_type', documentType)
+    params.append('limit', limit.toString())
+    params.append('offset', offset.toString())
 
-    // Query the pdf_text_chunks collection
-    const entities = await queryEntities('pdf_text_chunks', {
-      filter,
-      limit,
-      offset,
-      outputFields: ['chunk_id', 'doc_id', 'filename', 'company_name', 'content', 'page_number', 'source', 'metadata_json'],
-    })
-
-    // Group by doc_id to create Filing objects
-    const filingsMap = new Map<string, any>()
-
-    for (const entity of entities) {
-      const docId = entity.doc_id
-      
-      if (!filingsMap.has(docId)) {
-        // Parse metadata if it exists
-        let metadata: any = {}
-        try {
-          if (entity.metadata_json && typeof entity.metadata_json === 'string') {
-            metadata = JSON.parse(entity.metadata_json)
-          }
-        } catch (e) {
-          console.warn('Failed to parse metadata:', e)
-        }
-
-        // Extract date from filename or doc_id (format: pdf_filename_YYYYMMDD_HHMMSS_hash)
-        const dateMatch = docId.match(/_(\d{8})_/)
-        let announcementDate = new Date().toISOString()
-        if (dateMatch) {
-          const dateStr = dateMatch[1]
-          const year = dateStr.substring(0, 4)
-          const month = dateStr.substring(4, 6)
-          const day = dateStr.substring(6, 8)
-          announcementDate = new Date(`${year}-${month}-${day}`).toISOString()
-        }
-
-        filingsMap.set(docId, {
-          filing_id: docId,
-          company_code: entity.company_name || 'UNKNOWN',
-          company_name: entity.company_name || 'Unknown Company',
-          announcement_date: announcementDate,
-          document_type: entity.source || 'PDF',
-          title: entity.filename || 'Untitled Document',
-          summary: entity.content?.substring(0, 200) + '...' || '',
-          pdf_urls: [], // PDF URLs not stored in current schema
-          sentiment: 'neutral' as const,
-          tables_count: 0,
-          keywords: [],
-          _chunks: [entity],
-        })
-      } else {
-        // Add chunk to existing filing
-        const filing = filingsMap.get(docId)
-        filing._chunks.push(entity)
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/filings?${params}`,
+      {
+        method: 'GET',
+        headers: createHeaders(),
       }
+    )
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch filings: ${response.statusText}`)
     }
 
-    // Convert map to array and enrich with chunk data
-    const filings = Array.from(filingsMap.values()).map((filing) => {
-      // Count unique pages for tables_count approximation
-      const uniquePages = new Set(filing._chunks.map((c: any) => c.page_number))
-      filing.tables_count = uniquePages.size
-
-      // Extract keywords from content (simple approach - get unique words)
-      const allContent = filing._chunks.map((c: any) => c.content).join(' ')
-      const words = allContent.match(/\b[A-Z][a-z]+\b/g) || []
-      filing.keywords = [...new Set(words)].slice(0, 10)
-
-      // Remove internal _chunks property
-      delete filing._chunks
-
-      return filing
-    })
-
-    return filings
+    const data = await response.json()
+    return data.filings || []
   } catch (error) {
-    console.error('Error fetching filings from vector DB:', error)
+    console.error('Error fetching filings from backend:', error)
     return []
   }
 }

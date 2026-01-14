@@ -1,19 +1,30 @@
 import { Company } from '@/lib/types/api'
 import { mockCompanies } from '@/lib/mock-data/companies'
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+
 /**
- * Get all companies
+ * Get all companies from backend API
  */
 export async function getCompanies(): Promise<Company[]> {
-  // Simulate network delay
-  await new Promise((r) => setTimeout(r, 500))
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/companies`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
 
-  // TODO: Replace with actual API call when backend is ready
-  // const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/companies`)
-  // if (!response.ok) throw new Error('Failed to fetch companies')
-  // return response.json()
+    if (!response.ok) {
+      throw new Error(`Failed to fetch companies: ${response.statusText}`)
+    }
 
-  return mockCompanies
+    const data = await response.json()
+    return data.companies || []
+  } catch (error) {
+    console.error('Error fetching companies from backend:', error)
+    return []
+  }
 }
 
 /**
