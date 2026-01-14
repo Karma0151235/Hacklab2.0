@@ -1,54 +1,94 @@
-<default>
-Use pnpm exclusively. Do not use npm or yarn under any circumstances.
+# **Hackathon MVP – Full System Overview**
 
-Task Workflow:
+### 1️⃣ **Milvus RAG Retrieval**
 
-After completing each task, immediately update @IMPLEMENTATION.md to reflect the completed work.
+* **Collections:**
 
-Once the update is done, proceed to the next undone task without skipping steps.
+  1. `pdf_text_chunks` → unstructured text
+  2. `pdf_table_chunks` → extracted table segments
+* **Retrieval:**
 
-File Safety Rule:
+  * `k = 2` for text chunks
+  * `k = 1` for table chunks
+  * Total chunks per query = 3
+* **Output:**
 
-Always verify that a file exists before importing or referencing it.
+  ```json
+  [
+    {
+      "content": "...",
+      "metadata": {"filename": "...", "company_name": "..."},
+      "confidence": 0.96
+    },
+    ...
+  ]
+  ```
+* **Table chunks:** returned to frontend as **Pandas DataFrame** for reconstruction and visualization.
 
-If a file does not exist, it must be explicitly created or the import must be avoided.
+---
 
-Compliance Requirement:
-These rules are mandatory and must be followed for every task without exception.
-</default>
+### 2️⃣ **Agents & System Prompts**
 
-<use_interesting_fonts>
-Typography instantly signals quality. Avoid using boring, generic fonts.
+#### **Supervisor Agent**
 
-Never use: Inter, Roboto, Open Sans, Lato, default system fonts
+```text
+You orchestrate all queries to RAG, Alert, and Web Scraper agents.
+- Decide which agents to call based on user query.
+- Aggregate responses and provide a final, step-by-step, evidence-backed answer.
+- Include traceable reasoning, citations (filename, company), and reconstructed tables where relevant.
+- Format output:
+{
+  "answer": "...",
+  "agents_used": ["RAG","Alert","WebScraper"],
+  "citations": [{"source": "pdf_text_chunks", "filename": "..."}],
+  "steps": ["Step 1: ...", "Step 2: ..."],
+  "table_data": <Pandas DataFrame if applicable>
+}
+```
 
-Here are some examples of good, impactful choices:
-- Code aesthetic: JetBrains Mono, Fira Code, Space Grotesk
-- Editorial: Playfair Display, Crimson Pro
-- Technical: IBM Plex family, Source Sans 3
-- Distinctive: Bricolage Grotesque, Newsreader
+#### **RAG Agent**
 
-Pairing principle: High contrast = interesting. Display + monospace, serif + geometric sans, variable font across weights.
+```text
+You retrieve top K chunks from Milvus collections: pdf_text_chunks (k=2) and pdf_table_chunks (k=1).
+- Use the retrieved text and table chunks as context.
+- Apply chain-of-thought reasoning to provide a coherent answer.
+- Return structured output to Supervisor:
+{
+  "summary": "...",
+  "table_chunks": [{"title": "...", "rows": [...]}],
+  "entities": ["Company X", "Director Y"],
+  "metadata": [{"filename": "...", "company_name": "..."}]
+}
+- Do not call external sources.
+```
 
-Use extremes: 100/200 weight vs 800/900, not 400 vs 600. Size jumps of 3x+, not 1.5x.
+#### **Alert Agent**
 
-Pick one distinctive font, use it decisively. Load from Google Fonts.
-</use_interesting_fonts>
+```text
+You process structured data and ETL-derived metrics.
+- Evaluate configured alert rules:
+  - Keywords in filings/news
+  - Sentiment shifts
+  - Filing type
+  - Financial thresholds (≥10 key metrics)
+- Return active alerts as string + table metadata:
+{
+  "alerts": ["High risk due to adverse sentiment", ...],
+  "related_metrics": {"Liquidity": 1.2, "Profitability": 5.3, ...}
+}
+- Output sent back to Supervisor for final integration.
+```
 
-<frontend_aesthetics>
-You tend to converge toward generic, "on distribution" outputs. In frontend design,this creates what users call the "AI slop" aesthetic. Avoid this: make creative,distinctive frontends that surprise and delight. 
+#### **Web Scraper Agent**
 
-Focus on:
-- Typography: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics.
-- Color & Theme: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes. Draw from IDE themes and cultural aesthetics for inspiration.
-- Motion: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions.
-- Backgrounds: Create atmosphere and depth rather than defaulting to solid colors. Layer CSS gradients, use geometric patterns, or add contextual effects that match the overall aesthetic.
-
-Avoid generic AI-generated aesthetics:
-- Overused font families (Inter, Roboto, Arial, system fonts)
-- Clichéd color schemes (particularly purple gradients on white backgrounds)
-- Predictable layouts and component patterns
-- Cookie-cutter design that lacks context-specific character
-
-Interpret creatively and make unexpected choices that feel genuinely designed for the context. Vary between light and dark themes, different fonts, different aesthetics. You still tend to converge on common choices (Space Grotesk, for example) across generations. Avoid this: it is critical that you think outside the box!
-</frontend_aesthetics>
+```text
+- When triggered, fetch latest Bursa / news announcements.
+- Extract metadata, text, tables.
+- Provide **summary to Supervisor**.
+- Optionally save raw files for ETL ingestion.
+- Output example:
+{
+  "summary": "...",
+  "tables": [{"title": "...", "rows": [...]}],
+  "metadata": {"url": "...", "company": "..."}
+}

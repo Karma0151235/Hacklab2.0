@@ -280,3 +280,109 @@ export async function getETLJobStatus(jobId: string): Promise<PDFProcessingStatu
 
   return response.json()
 }
+
+// ==================== Bursa Scraping API ====================
+
+export interface BursaScrapingRequest {
+  year: number
+  max_announcements: number
+  company_filter?: string
+}
+
+export interface BursaScrapingResponse {
+  job_id: string
+  status: string
+  message: string
+  year: number
+  max_announcements: number
+  company_filter?: string[]
+}
+
+export interface BursaScrapingStatus {
+  job_id: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  progress: number
+  phase: string
+  total_announcements: number
+  scraped_announcements: number
+  errors: string[]
+  created_at: string
+  completed_at?: string
+}
+
+export interface BursaAnnouncementRecord {
+  company_code?: string
+  announcement_date: string
+  category: string
+  title: string
+  tables_count: number
+  detail_page_url: string
+}
+
+export interface BursaScrapingResults {
+  job_id: string
+  status: string
+  total_announcements: number
+  announcements: BursaAnnouncementRecord[]
+  video_available: boolean
+}
+
+/**
+ * Start a Bursa Malaysia scraping job
+ */
+export async function startBursaScraping(request: BursaScrapingRequest): Promise<BursaScrapingResponse> {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/scraping/bursa/start`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Failed to start scraping' }))
+    throw new Error(error.detail || `Failed to start scraping: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Get Bursa scraping job status
+ */
+export async function getBursaScrapingStatus(jobId: string): Promise<BursaScrapingStatus> {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/scraping/bursa/status/${jobId}`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to get job status: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Get Bursa scraping job results
+ */
+export async function getBursaScrapingResults(jobId: string): Promise<BursaScrapingResults> {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/scraping/bursa/results/${jobId}`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to get results: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Get video URL for a scraping job
+ */
+export function getBursaScrapingVideoUrl(jobId: string): string {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+  return `${API_BASE_URL}/api/v1/scraping/bursa/video/${jobId}`
+}

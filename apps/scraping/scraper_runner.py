@@ -6,6 +6,16 @@ import base64
 import re
 from datetime import datetime
 
+# Add project root to Python path
+# Get the directory containing this file (apps/scraping/)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Get parent directory (apps/)
+apps_dir = os.path.dirname(current_dir)
+# Get grandparent directory (project root)
+project_root = os.path.dirname(apps_dir)
+# Add to path so 'apps' module can be imported
+sys.path.insert(0, project_root)
+
 # Force UTF-8 stdout
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
