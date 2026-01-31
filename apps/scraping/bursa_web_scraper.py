@@ -36,6 +36,7 @@ class BursaWebScraper:
     """
     def __init__(self, progress_callback=None):
         self.progress_tracker = ProgressTracker(task_id="bursa_scrape")
+        self.progress_callback = progress_callback
         self.base_url = "https://www.bursamalaysia.com/market_information/announcements/company_announcement"
         self.announcements = []
         self.structured_records = []
@@ -47,7 +48,10 @@ class BursaWebScraper:
         max_announcements: int = 10,
         company_filter: List[str] = None,
         categories: List[str] = None,
-        scrape_all_categories: bool = False
+        scrape_all_categories: bool = False,
+        resource_efficient: bool = False,
+        use_cloudscraper: bool = True,
+        manual_captcha_timeout_seconds: int = 120
     ) -> Dict[str, Any]:
         """
         Main scraping method implementing Phases 1-12.
@@ -66,18 +70,27 @@ class BursaWebScraper:
         
         try:
             # Phase 1-2: Initialize browser & video recording
-            await self.progress_tracker.emit_progress("loading", 10, "Launching browser...")
-            # Level 1 Cloudflare Bypass: headless=False to appear human
-            await browser.launch(headless=False)  # VISIBLE BROWSER - Can manually solve CAPTCHA
-            await browser.create_context()
+            await self._emit_progress("loading", 10, "Launching browser...")
+            if resource_efficient:
+                await browser.launch(headless=True)
+                await browser.create_context(
+                    record_video=False,
+                    viewport={"width": 1280, "height": 720},
+                    block_resources=True,
+                )
+            else:
+                # Level 1 Cloudflare Bypass: headless=False to appear human
+                await browser.launch(headless=False)  # VISIBLE BROWSER - Can manually solve CAPTCHA
+                await browser.create_context()
             page = browser.page
             
             # Phase 3: Inject bounding box helpers
-            await self.progress_tracker.emit_progress("loading", 25, "Injecting visual tracking...")
-            await browser.inject_bounding_box_helpers()
+            if not resource_efficient:
+                await self._emit_progress("loading", 25, "Injecting visual tracking...")
+                await browser.inject_bounding_box_helpers()
             
             # Phase 4: Navigate to listing page
-            await self.progress_tracker.emit_progress("loading", 35, "Navigating to Bursa...")
+            await self._emit_progress("loading", 35, "Navigating to Bursa...")
             listing_url = self.base_url
             await page.goto(listing_url, wait_until="domcontentloaded", timeout=30000)
             await page.wait_for_timeout(2000)
@@ -94,10 +107,11 @@ class BursaWebScraper:
                 # Default: scrape only Financial Result
                 categories_to_scrape = [("Financial Result", CATEGORY_CONFIG["Financial Result"])]
             
-            await self.progress_tracker.emit_progress(
+            await self._emit_progress(
                 "detecting", 
                 40, 
-                f"Scraping {len(categories_to_scrape)} categories..."
+                f"Scraping {len(categories_to_scrape)} categories...",
+                metadata={"categories": [name for name, _ in categories_to_scrape]}
             )
             
             # Phase 6: Iterate through categories using direct URLs
@@ -105,10 +119,11 @@ class BursaWebScraper:
             
             for cat_idx, (category_name, config) in enumerate(categories_to_scrape):
                 cat_progress = 40 + int((cat_idx / len(categories_to_scrape)) * 20)
-                await self.progress_tracker.emit_progress(
+                await self._emit_progress(
                     "detecting",
                     cat_progress,
-                    f"Category: {category_name}"
+                    f"Category: {category_name}",
+                    metadata={"category": category_name}
                 )
                 
                 
@@ -118,7 +133,10 @@ class BursaWebScraper:
                     self.base_url,
                     config["cat_code"],  # Use category code for filtering
                     category_name,
-                    max_announcements
+                    max_announcements,
+                    allow_manual_captcha=not resource_efficient,
+                    use_cloudscraper=use_cloudscraper,
+                    manual_captcha_timeout_seconds=manual_captcha_timeout_seconds
                 )
                 
                 # Apply company filter if specified
@@ -134,7 +152,8 @@ class BursaWebScraper:
                     category_announcements = filtered_announcements
                 
                 # Highlight announcements on listing page
-                await crawler.highlight_announcements_on_page(page, category_announcements)
+                if not resource_efficient:
+                    await crawler.highlight_announcements_on_page(page, category_announcements)
                 
                 # Add to main announcements list
                 self.announcements.extend(category_announcements)
@@ -142,17 +161,23 @@ class BursaWebScraper:
             
             
             # Phase 7: Scrape each announcement detail page
-            await self.progress_tracker.emit_progress("scraping", 60, f"Processing {len(self.announcements)} announcements...")
+            await self._emit_progress(
+                "scraping",
+                60,
+                f"Processing {len(self.announcements)} announcements...",
+                metadata={"scraped_count": 0, "total_announcements": len(self.announcements)}
+            )
             
             fetcher = BursaAnnouncementFetcher()
             parser = BursaHTMLParser()
             
             for idx, announcement in enumerate(self.announcements):
                 progress_percent = 60 + int((idx / len(self.announcements)) * 25)
-                await self.progress_tracker.emit_progress(
+                await self._emit_progress(
                     "scraping",
                     progress_percent,
-                    f"Scraping {idx + 1}/{len(self.announcements)}: {announcement['title'][:30]}..."
+                    f"Scraping {idx + 1}/{len(self.announcements)}: {announcement['title'][:30]}...",
+                    metadata={"scraped_count": idx + 1, "total_announcements": len(self.announcements)}
                 )
                 
                 # Navigate to detail page
@@ -161,13 +186,15 @@ class BursaWebScraper:
                     continue
                 
                 # Re-inject helpers on detail page
-                await browser.inject_bounding_box_helpers()
+                if not resource_efficient:
+                    await browser.inject_bounding_box_helpers()
                 
                 # Clear previous boxes (safely)
-                try:
-                    await page.evaluate('if (window.clearAllBoxes) window.clearAllBoxes()')
-                except:
-                    pass
+                if not resource_efficient:
+                    try:
+                        await page.evaluate('if (window.clearAllBoxes) window.clearAllBoxes()')
+                    except:
+                        pass
                 
                 # Extract tables from main page
                 tables_data = await parser.extract_tables(page)
@@ -184,7 +211,8 @@ class BursaWebScraper:
                 raw_text = await parser.extract_all_text(page)
                 
                 # Highlight ALL tables (including iframe tables)
-                await parser.highlight_tables(page, all_tables)
+                if not resource_efficient:
+                    await parser.highlight_tables(page, all_tables)
                 
                 # Create dual outputs with all tables
                 structured_record = self._create_structured_record(announcement, all_tables)
@@ -197,15 +225,15 @@ class BursaWebScraper:
                 await page.wait_for_timeout(1500)
             
             # Phase 7: Finalize video
-            await self.progress_tracker.emit_progress("finalizing", 92, "Finalizing video...")
+            await self._emit_progress("finalizing", 92, "Finalizing video...")
             video_base64 = await browser.finalize_video()
             
             # Phase 8: Generate report
-            await self.progress_tracker.emit_progress("generating", 98, "Generating report...")
+            await self._emit_progress("generating", 98, "Generating report...")
             report_markdown = self._generate_report()
             
             # Phase 9: Return results
-            await self.progress_tracker.emit_progress("complete", 100, "Scraping complete!")
+            await self._emit_progress("complete", 100, "Scraping complete!")
             
             return {
                 "status": "success",
@@ -218,11 +246,19 @@ class BursaWebScraper:
             }
             
         except Exception as e:
-            await self.progress_tracker.emit_progress("error", 0, f"Scraping failed: {str(e)}")
+            await self._emit_progress("error", 0, f"Scraping failed: {str(e)}")
             raise
         finally:
             if browser.browser:
                 await browser.finalize_video()
+
+    async def _emit_progress(self, phase: str, percent: int, message: str, metadata: Dict[str, Any] = None):
+        await self.progress_tracker.emit_progress(phase, percent, message, metadata=metadata)
+        if self.progress_callback:
+            try:
+                self.progress_callback(phase, percent, message, metadata or {})
+            except Exception:
+                pass
 
     def _create_structured_record(self, announcement: Dict[str, Any], tables_data: List[Dict]) -> StructuredRecord:
         """Create structured record for SQL/Dashboard (Phase 7)."""
@@ -263,8 +299,15 @@ class BursaWebScraper:
 
     def _create_document_object(self, announcement: Dict[str, Any], tables_data: List[Dict], raw_text: str) -> DocumentObject:
         """Create document object for NLP/RAG (Phase 8)."""
-        announcement_id = announcement.get('detail_page_url', '').split('/')[-1] or 'unknown'
-        doc_id = f"bursa_{announcement_id}_{int(datetime.utcnow().timestamp())}"
+        announcement_id = announcement.get('announcement_id')
+        if not announcement_id:
+            detail_url = announcement.get('detail_page_url', '')
+            match = re.search(r"ann_id=([^&]+)", detail_url)
+            if match:
+                announcement_id = match.group(1)
+            else:
+                announcement_id = detail_url.split('/')[-1] or 'unknown'
+        doc_id = f"bursa_{announcement_id}"
         
         # Determine doc_type from category
         category = announcement.get('category', '').lower()

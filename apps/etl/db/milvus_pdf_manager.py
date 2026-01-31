@@ -175,6 +175,23 @@ class MilvusPDFManager:
 
         return True
 
+    def document_exists(self, doc_id: str) -> bool:
+        if not doc_id:
+            return False
+
+        try:
+            collection = self.Collection(self.TEXT_COLLECTION)
+            collection.load()
+            results = collection.query(
+                expr=f'doc_id == "{doc_id}"',
+                output_fields=["doc_id"],
+                limit=1,
+            )
+            return len(results) > 0
+        except Exception as e:
+            logger.warning(f"Milvus document_exists check failed for {doc_id}: {e}")
+            return False
+
 
     def insert_table_chunks(self, tables: List[Dict[str, Any]]) -> bool:
         if not tables:

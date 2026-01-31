@@ -28,6 +28,20 @@ class BursaScrapingRequest(BaseModel):
     year: int = Field(default=2024, ge=2020, le=2026, description="Financial year to scrape")
     max_announcements: int = Field(default=10, ge=5, le=100, description="Maximum announcements to scrape")
     company_filter: Optional[str] = Field(default=None, description="Comma-separated company names/codes (e.g., 'MAYBANK, CIMB, PCHEM')")
+    resource_efficient: bool = Field(
+        default=False,
+        description="Use headless mode, block heavy resources, and disable video to reduce memory usage"
+    )
+    use_cloudscraper: bool = Field(
+        default=True,
+        description="Use cloudscraper + proxy rotation fallback when Cloudflare blocks the listing page"
+    )
+    manual_captcha_timeout_seconds: int = Field(
+        default=120,
+        ge=10,
+        le=600,
+        description="Max wait time for manual Cloudflare verification (seconds)"
+    )
 
 
 class BursaScrapingResponse(BaseModel):
@@ -38,6 +52,9 @@ class BursaScrapingResponse(BaseModel):
     year: int
     max_announcements: int
     company_filter: Optional[List[str]] = None
+    resource_efficient: bool
+    use_cloudscraper: bool
+    manual_captcha_timeout_seconds: int
 
 
 class BursaScrapingStatus(BaseModel):
@@ -46,9 +63,12 @@ class BursaScrapingStatus(BaseModel):
     status: str  # pending, processing, completed, failed
     progress: int  # 0-100
     phase: str  # loading, detecting, scraping, finalizing, complete
+    message: Optional[str] = None
     total_announcements: int
     scraped_announcements: int
     errors: List[str] = Field(default_factory=list)
+    ingestion_status: Optional[str] = None
+    ingestion_stats: Optional[Dict[str, int]] = None
     created_at: str
     completed_at: Optional[str] = None
 
@@ -89,7 +109,15 @@ def parse_company_filter(company_filter: Optional[str]) -> Optional[List[str]]:
     return companies if companies else None
 
 
-def run_scraping_task_sync(job_id: str, year: int, max_announcements: int, company_filter: Optional[List[str]]):
+def run_scraping_task_sync(
+    job_id: str,
+    year: int,
+    max_announcements: int,
+    company_filter: Optional[List[str]],
+    resource_efficient: bool,
+    use_cloudscraper: bool,
+    manual_captcha_timeout_seconds: int
+):
     """
     Synchronous wrapper to run scraper in a separate thread with its own event loop
     This is required for Windows + Playwright + FastAPI compatibility
@@ -105,12 +133,30 @@ def run_scraping_task_sync(job_id: str, year: int, max_announcements: int, compa
     asyncio.set_event_loop(loop)
     
     try:
-        loop.run_until_complete(run_scraping_task_async(job_id, year, max_announcements, company_filter))
+        loop.run_until_complete(
+            run_scraping_task_async(
+                job_id,
+                year,
+                max_announcements,
+                company_filter,
+                resource_efficient,
+                use_cloudscraper,
+                manual_captcha_timeout_seconds
+            )
+        )
     finally:
         loop.close()
 
 
-async def run_scraping_task_async(job_id: str, year: int, max_announcements: int, company_filter: Optional[List[str]]):
+async def run_scraping_task_async(
+    job_id: str,
+    year: int,
+    max_announcements: int,
+    company_filter: Optional[List[str]],
+    resource_efficient: bool,
+    use_cloudscraper: bool,
+    manual_captcha_timeout_seconds: int
+):
     """
     Background task to run the Bursa scraper (async implementation)
     """
@@ -122,8 +168,18 @@ async def run_scraping_task_async(job_id: str, year: int, max_announcements: int
         job_statuses[job_id]["phase"] = "loading"
         job_statuses[job_id]["progress"] = 10
         
+        def progress_callback(phase: str, percent: int, message: str, metadata: Dict[str, int]):
+            job_statuses[job_id]["phase"] = phase
+            job_statuses[job_id]["progress"] = percent
+            job_statuses[job_id]["message"] = message
+            if metadata:
+                if "scraped_count" in metadata:
+                    job_statuses[job_id]["scraped_announcements"] = metadata["scraped_count"]
+                if "total_announcements" in metadata:
+                    job_statuses[job_id]["total_announcements"] = metadata["total_announcements"]
+
         # Initialize scraper
-        scraper = BursaWebScraper()
+        scraper = BursaWebScraper(progress_callback=progress_callback)
         
         # Run scraping
         result = await scraper.scrape(
@@ -131,7 +187,10 @@ async def run_scraping_task_async(job_id: str, year: int, max_announcements: int
             max_announcements=max_announcements,
             company_filter=company_filter,
             categories=None,
-            scrape_all_categories=False
+            scrape_all_categories=False,
+            resource_efficient=resource_efficient,
+            use_cloudscraper=use_cloudscraper,
+            manual_captcha_timeout_seconds=manual_captcha_timeout_seconds
         )
         
         # Process results
@@ -176,11 +235,20 @@ async def run_scraping_task_async(job_id: str, year: int, max_announcements: int
                 from bursa_ingestion import ingest_bursa_scraping_results
                 
                 # Ingest into MilvusDB
-                ingestion_result = ingest_bursa_scraping_results(document_objects)
+                def ingestion_progress_callback(stats: Dict[str, int]):
+                    job_statuses[job_id]["ingestion_status"] = "processing"
+                    job_statuses[job_id]["ingestion_stats"] = stats
+
+                ingestion_result = ingest_bursa_scraping_results(
+                    document_objects,
+                    progress_callback=ingestion_progress_callback
+                )
                 
                 # Store ingestion stats in job results
                 job_results[job_id]['ingestion_stats'] = ingestion_result.get('stats', {})
                 job_results[job_id]['ingestion_status'] = ingestion_result.get('status', 'unknown')
+                job_statuses[job_id]["ingestion_stats"] = ingestion_result.get('stats', {})
+                job_statuses[job_id]["ingestion_status"] = ingestion_result.get('status', 'unknown')
                 
                 if ingestion_result.get('status') == 'success':
                     logger.info(f"[Job {job_id}] Database ingestion complete: {ingestion_result.get('stats', {})}")
@@ -211,6 +279,7 @@ async def run_scraping_task_async(job_id: str, year: int, max_announcements: int
         job_statuses[job_id]["status"] = "failed"
         job_statuses[job_id]["phase"] = "error"
         job_statuses[job_id]["errors"].append(str(e))
+        job_statuses[job_id]["message"] = str(e)
         import traceback
         traceback.print_exc()
 
@@ -280,13 +349,24 @@ async def start_bursa_scraping(
         "created_at": datetime.utcnow().isoformat(),
         "completed_at": None,
         "year": request.year,
-        "company_filter": companies
+        "company_filter": companies,
+        "resource_efficient": request.resource_efficient,
+        "use_cloudscraper": request.use_cloudscraper,
+        "manual_captcha_timeout_seconds": request.manual_captcha_timeout_seconds
     }
     
     # Start scraping in a separate thread (required for Windows + Playwright)
     thread = threading.Thread(
         target=run_scraping_task_sync,
-        args=(job_id, request.year, request.max_announcements, companies),
+        args=(
+            job_id,
+            request.year,
+            request.max_announcements,
+            companies,
+            request.resource_efficient,
+            request.use_cloudscraper,
+            request.manual_captcha_timeout_seconds
+        ),
         daemon=True
     )
     thread.start()
@@ -299,7 +379,10 @@ async def start_bursa_scraping(
         message=f"Scraping job started for year {request.year}",
         year=request.year,
         max_announcements=request.max_announcements,
-        company_filter=companies
+        company_filter=companies,
+        resource_efficient=request.resource_efficient,
+        use_cloudscraper=request.use_cloudscraper,
+        manual_captcha_timeout_seconds=request.manual_captcha_timeout_seconds
     )
 
 
@@ -320,9 +403,12 @@ async def get_bursa_scraping_status(job_id: str):
         status=job["status"],
         progress=job["progress"],
         phase=job["phase"],
+        message=job.get("message"),
         total_announcements=job["total_announcements"],
         scraped_announcements=job["scraped_announcements"],
         errors=job["errors"],
+        ingestion_status=job.get("ingestion_status"),
+        ingestion_stats=job.get("ingestion_stats"),
         created_at=job["created_at"],
         completed_at=job.get("completed_at")
     )

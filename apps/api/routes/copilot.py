@@ -8,14 +8,15 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime
+import os
 
-from workflows.intelligence_flow import run_intelligence_query, IntelligenceFlow
 from agents.schemas import SupervisorOutput, SupervisorInput
 from agents.config import AgentConfig
 
 # Initialize router
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_flow_instance = None
 
 class CopilotQueryRequest(BaseModel):
     """Request model for copilot query"""
@@ -31,6 +32,25 @@ class CopilotHealthResponse(BaseModel):
     openrouter: str
     timestamp: str
 
+
+def _get_flow():
+    """Get or create a cached IntelligenceFlow instance."""
+    global _flow_instance
+    if _flow_instance is not None:
+        return _flow_instance
+
+    try:
+        from workflows.intelligence_flow import IntelligenceFlow
+    except ModuleNotFoundError as e:
+        raise HTTPException(status_code=503, detail=f"Workflow dependency missing: {str(e)}")
+
+    try:
+        _flow_instance = IntelligenceFlow()
+    except (ModuleNotFoundError, ImportError) as e:
+        _flow_instance = None
+        raise HTTPException(status_code=503, detail=f"Workflow dependency missing: {str(e)}")
+    return _flow_instance
+
 @router.post("/copilot/query", response_model=SupervisorOutput)
 async def query_copilot(request: CopilotQueryRequest):
     """
@@ -43,6 +63,10 @@ async def query_copilot(request: CopilotQueryRequest):
     4. Agents process data using OpenRouter LLMs
     5. Supervisor synthesizes final response with citations and tables
     """
+    global _flow_instance
+    if not AgentConfig.OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="OpenRouter API key not configured")
+
     try:
         logger.info(f"Received copilot query: {request.query}")
         
@@ -51,7 +75,7 @@ async def query_copilot(request: CopilotQueryRequest):
         # In a production high-load scenario, we'd use the async flow.arun()
         
         # Initialize workflow
-        flow = IntelligenceFlow()
+        flow = _get_flow()
         
         # Execute (using async method if available in flow, else sync)
         # The flow.arun method is async, so we await it
@@ -60,6 +84,11 @@ async def query_copilot(request: CopilotQueryRequest):
         logger.info(f"Query processed successfully. Agents used: {output.agents_used}")
         return output
         
+    except HTTPException:
+        raise
+    except (ModuleNotFoundError, ImportError) as e:
+        _flow_instance = None
+        raise HTTPException(status_code=503, detail=f"Workflow dependency missing: {str(e)}")
     except Exception as e:
         logger.error(f"Error processing copilot query: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Copilot processing failed: {str(e)}")
@@ -73,7 +102,9 @@ async def health_check():
     try:
         from pymilvus import connections, utility
         if not connections.has_connection("default"):
-            connections.connect(host=AgentConfig.MILVUS_HOST, port=AgentConfig.MILVUS_PORT)
+            milvus_host = os.getenv("MILVUS_HOST", AgentConfig.MILVUS_HOST)
+            milvus_port = int(os.getenv("MILVUS_PORT", AgentConfig.MILVUS_PORT))
+            connections.connect(host=milvus_host, port=milvus_port)
         
         if utility.get_server_version():
             milvus_status = "connected"
@@ -83,7 +114,7 @@ async def health_check():
         milvus_status = f"disconnected: {str(e)}"
         
     # Check OpenRouter API key
-    openrouter_status = "configured" if AgentConfig.OPENROUTER_API_KEY else "missing_key"
+    openrouter_status = "configured" if os.getenv("OPENROUTER_API_KEY") else "missing_key"
     
     return CopilotHealthResponse(
         status="healthy" if milvus_status == "connected" and openrouter_status == "configured" else "degraded",

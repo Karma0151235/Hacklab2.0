@@ -23,9 +23,18 @@ class PlaywrightBrowser:
         )
         return self.browser
 
-    async def create_context(self) -> BrowserContext:
+    async def create_context(
+        self,
+        *,
+        record_video: bool = True,
+        viewport: Optional[Dict[str, int]] = None,
+        block_resources: bool = False,
+    ) -> BrowserContext:
         if not self.browser:
             await self.launch()
+
+        if viewport is None:
+            viewport = {"width": 1920, "height": 1080}
 
         # Ensure video dir exists
         if not os.path.exists(self.video_dir):
@@ -34,20 +43,41 @@ class PlaywrightBrowser:
             except OSError:
                 pass # Ignore if exists
 
-        self.context = await self.browser.new_context(
-            user_agent=(
+        context_kwargs = {
+            "user_agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/131.0.0.0 Safari/537.36"
             ),
-            locale="en-US,en;q=0.9",
-            viewport={"width": 1920, "height": 1080},
-            record_video_dir=self.video_dir,
-            record_video_size={"width": 1920, "height": 1080},
-        )
+            "locale": "en-US,en;q=0.9",
+            "viewport": viewport,
+        }
+
+        if record_video:
+            context_kwargs["record_video_dir"] = self.video_dir
+            context_kwargs["record_video_size"] = viewport
+
+        self.context = await self.browser.new_context(**context_kwargs)
+        if block_resources:
+            await self.enable_resource_blocking()
         
         self.page = await self.context.new_page()
         return self.context
+
+    async def enable_resource_blocking(self, resource_types: Optional[set] = None) -> None:
+        if not self.context:
+            return
+
+        if resource_types is None:
+            resource_types = {"image", "media", "font"}
+
+        async def _route_handler(route):
+            if route.request.resource_type in resource_types:
+                await route.abort()
+            else:
+                await route.continue_()
+
+        await self.context.route("**/*", _route_handler)
 
     async def inject_bounding_box_helpers(self) -> None:
         """Inject JavaScript utilities for bounding box drawing."""

@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 class BursaIngestion:
     """Ingest scraped Bursa data into MilvusDB (pdf_text_chunks collection)"""
     
-    def __init__(self):
+    def __init__(self, progress_callback=None):
         """Initialize ingestion components"""
         logger.info("Initializing Bursa Ingestion components...")
         
@@ -54,6 +54,7 @@ class BursaIngestion:
             "records_inserted": 0,
             "tables_inserted": 0,  # Track table chunks separately
         }
+        self.progress_callback = progress_callback
     
     def ingest_documents(self, document_objects: List[DocumentObject]) -> Dict[str, Any]:
         """
@@ -67,10 +68,22 @@ class BursaIngestion:
         """
         logger.info(f"Starting ingestion of {len(document_objects)} documents...")
         
-        # Process each document
+        # Process each document with duplicate guard
+        seen_doc_ids = set()
         for idx, doc_obj in enumerate(document_objects, 1):
             logger.info(f"[{idx}/{len(document_objects)}] Processing: {doc_obj.title[:50]}...")
+
+            if doc_obj.doc_id in seen_doc_ids:
+                logger.info(f"  ↪ Skipping duplicate in batch: {doc_obj.doc_id}")
+                continue
+
+            if self.milvus_manager.document_exists(doc_obj.doc_id):
+                logger.info(f"  ↪ Skipping already ingested: {doc_obj.doc_id}")
+                continue
+
+            seen_doc_ids.add(doc_obj.doc_id)
             self._ingest_single_document(doc_obj)
+            self._emit_progress(idx, len(document_objects))
         
         logger.info(f"Ingestion complete! Stats: {self.stats}")
         
@@ -79,6 +92,24 @@ class BursaIngestion:
             "message": f"Ingested {self.stats['documents_processed']} documents",
             "stats": self.stats
         }
+
+    def _emit_progress(self, processed_count: int, total_count: int):
+        if not self.progress_callback:
+            return
+
+        payload = {
+            "documents_processed": self.stats["documents_processed"],
+            "chunks_created": self.stats["chunks_created"],
+            "embeddings_generated": self.stats["embeddings_generated"],
+            "records_inserted": self.stats["records_inserted"],
+            "tables_inserted": self.stats["tables_inserted"],
+            "processed_count": processed_count,
+            "total_count": total_count,
+        }
+        try:
+            self.progress_callback(payload)
+        except Exception:
+            pass
     
     def _ingest_single_document(self, doc_obj: DocumentObject) -> None:
         """Ingest a single document (text + tables)"""
@@ -240,15 +271,20 @@ class BursaIngestion:
             # Prepare data for pdf_table_chunks collection
             tables_data = []
             for idx, (table, embedding) in enumerate(zip(tables, embeddings)):
-                # Serialize table data
-                import json
-                table_data_json = json.dumps(table.get('rows', []))
+                # Normalize table rows to List[List[str]] format
+                rows = table.get('rows', [])
+                normalized_rows = self._normalize_table_rows(rows, table.get('headers', []))
+                
+                # Validate normalized data
+                if not self._validate_table_data(normalized_rows, doc_id, idx):
+                    logger.warning(f"  Skipping malformed table {idx} from {doc_id}")
+                    continue
                 
                 table_dict = {
                     "table_id": f"{doc_id}_table_{idx:04d}_{uuid.uuid4().hex[:8]}",
                     "filename": f"{doc_id}.txt",
                     "company_name": company_code,
-                    "table_data": table_data_json,
+                    "table_data": normalized_rows,  # Now List[List[str]], will be JSON-serialized by MilvusPDFManager
                     "table_index": idx,
                     "source": "bursa_scraper",
                     "doc_id": doc_id,
@@ -264,6 +300,84 @@ class BursaIngestion:
             import traceback
             traceback.print_exc()
             return []
+    
+    def _normalize_table_rows(self, rows: List, headers: List[str] = None) -> List[List[str]]:
+        """
+        Normalize table rows to List[List[str]] format
+        
+        Handles:
+        - List[Dict]: Convert to list of lists using headers
+        - List[List]: Already correct format, just ensure all elements are strings
+        
+        Args:
+            rows: Raw table rows from scraper
+            headers: Optional headers list (from table.get('headers'))
+            
+        Returns:
+            List[List[str]]: Normalized table data
+        """
+        if not rows:
+            return []
+        
+        # Case 1: List of dicts (from web scraper)
+        if isinstance(rows[0], dict):
+            # Extract keys as headers if not provided
+            if not headers:
+                # Use keys from first row as headers
+                headers = list(rows[0].keys())
+            
+            # Build normalized table with header row
+            normalized = [headers]
+            
+            # Convert each dict row to list based on header order
+            for row_dict in rows:
+                row_list = [str(row_dict.get(h, "")) for h in headers]
+                normalized.append(row_list)
+            
+            logger.debug(f"Normalized {len(rows)} dict rows to {len(normalized)} list rows")
+            return normalized
+        
+        # Case 2: List of lists (already correct format)
+        if isinstance(rows[0], list):
+            # Ensure all elements are strings
+            normalized = []
+            for row in rows:
+                str_row = [str(cell) if cell is not None else "" for cell in row]
+                normalized.append(str_row)
+            return normalized
+        
+        # Unknown format
+        logger.warning(f"Unknown table row format: {type(rows[0])}")
+        return []
+    
+    def _validate_table_data(self, table_data: List[List[str]], doc_id: str, table_idx: int) -> bool:
+        """
+        Validate table data format
+        
+        Args:
+            table_data: Normalized table data
+            doc_id: Document ID for logging
+            table_idx: Table index for logging
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        if not table_data:
+            logger.warning(f"Empty table data for {doc_id} table {table_idx}")
+            return False
+        
+        # Check that all rows are lists
+        if not all(isinstance(row, list) for row in table_data):
+            logger.error(f"Invalid table format for {doc_id} table {table_idx}: not all rows are lists")
+            return False
+        
+        # Check that all cells are strings
+        for row_idx, row in enumerate(table_data):
+            if not all(isinstance(cell, str) for cell in row):
+                logger.error(f"Invalid table format for {doc_id} table {table_idx} row {row_idx}: not all cells are strings")
+                return False
+        
+        return True
     
     def _table_to_text(self, table: Dict[str, Any]) -> str:
         """Convert table dict to readable text for embedding"""
@@ -292,7 +406,10 @@ class BursaIngestion:
 
 
 
-def ingest_bursa_scraping_results(document_objects: List[DocumentObject]) -> Dict[str, Any]:
+def ingest_bursa_scraping_results(
+    document_objects: List[DocumentObject],
+    progress_callback=None
+) -> Dict[str, Any]:
     """
     Convenience function to ingest Bursa scraping results
     
@@ -302,7 +419,7 @@ def ingest_bursa_scraping_results(document_objects: List[DocumentObject]) -> Dic
     Returns:
         Ingestion results
     """
-    ingestion = BursaIngestion()
+    ingestion = BursaIngestion(progress_callback=progress_callback)
     return ingestion.ingest_documents(document_objects)
 
 

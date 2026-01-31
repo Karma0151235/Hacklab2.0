@@ -82,7 +82,9 @@ Always:
         # Initialize OpenRouter client
         self.client = openai.OpenAI(
             api_key=self.config.OPENROUTER_API_KEY,
-            base_url=self.config.OPENROUTER_BASE_URL
+            base_url=self.config.OPENROUTER_BASE_URL,
+            timeout=self.config.OPENROUTER_TIMEOUT_SECONDS,
+            max_retries=self.config.OPENROUTER_MAX_RETRIES,
         )
 
         logger.info("Supervisor Agent initialized")
@@ -117,6 +119,34 @@ Always:
             ))
             agents_used.append("RAG")
             steps.append(f"Retrieved {len(rag_output.metadata)} chunks from knowledge base")
+            
+            # Early-exit check: Skip expensive agent calls if RAG returns no/low-quality results
+            rag_quality = self._assess_rag_quality(rag_output)
+            if rag_quality["skip_expensive_agents"]:
+                logger.warning(f"Low RAG quality detected ({rag_quality['reason']}), skipping Financial/Alert agents")
+                steps.append(f"⚠ Low-quality RAG results detected: {rag_quality['reason']}")
+                steps.append("Skipping expensive agent calls to optimize performance")
+                
+                # Return early with just RAG results
+                answer = self._synthesize_response_rag_only(
+                    input_data.query,
+                    rag_output,
+                    rag_quality,
+                    steps
+                )
+                
+                citations = self._build_citations(rag_output)
+                table_data = self._prepare_table_data(rag_output)
+                confidence = rag_quality["confidence"]
+                
+                return SupervisorOutput(
+                    answer=answer,
+                    agents_used=agents_used,
+                    citations=citations,
+                    steps=steps,
+                    table_data=table_data,
+                    confidence_score=confidence
+                )
 
             # Step 3: Call Financial Agent if needed
             financial_output = None
@@ -365,3 +395,91 @@ Be clear, concise, and specific. Include numbers and citations."""
                 avg_confidence = max(avg_confidence * 0.9, 0.3)
 
         return round(avg_confidence, 2)
+    
+    def _assess_rag_quality(self, rag_output) -> Dict[str, Any]:
+        """
+        Assess RAG output quality to determine if expensive agent calls should be skipped
+        
+        Returns:
+            Dict with keys:
+            - skip_expensive_agents: bool
+            - reason: str (reason for skipping)
+            - confidence: float
+        """
+        # Check 1: No chunks retrieved
+        if not rag_output.metadata or len(rag_output.metadata) == 0:
+            return {
+                "skip_expensive_agents": True,
+                "reason": "No relevant documents found",
+                "confidence": 0.1
+            }
+        
+        # Check 2: Very low confidence scores (average < 0.3)
+        avg_confidence = sum(m.confidence_score for m in rag_output.metadata) / len(rag_output.metadata)
+        if avg_confidence < 0.3:
+            return {
+                "skip_expensive_agents": True,
+                "reason": f"Low relevance confidence ({avg_confidence:.2f})",
+                "confidence": avg_confidence
+            }
+        
+        # Check 3: Empty or very short summary (indicates no useful content)
+        if not rag_output.summary or len(rag_output.summary.strip()) < 50:
+            return {
+                "skip_expensive_agents": True,
+                "reason": "Insufficient context extracted",
+                "confidence": 0.2
+            }
+        
+        # Check 4: Summary contains error messages
+        error_indicators = ["error", "failed", "unable to", "no information", "not found"]
+        if any(indicator in rag_output.summary.lower() for indicator in error_indicators):
+            return {
+                "skip_expensive_agents": True,
+                "reason": "RAG extraction encountered errors",
+                "confidence": 0.2
+            }
+        
+        # Good quality - proceed with full orchestration
+        return {
+            "skip_expensive_agents": False,
+            "reason": "High-quality RAG results",
+            "confidence": avg_confidence
+        }
+    
+    def _synthesize_response_rag_only(
+        self,
+        query: str,
+        rag_output,
+        rag_quality: Dict[str, Any],
+        steps: List[str]
+    ) -> str:
+        """
+        Synthesize response using only RAG output (fast path for low-quality results)
+        
+        This is a lightweight alternative to full synthesis when RAG returns poor results.
+        """
+        try:
+            if not rag_output.summary or len(rag_output.summary.strip()) < 20:
+                return (
+                    f"I couldn't find relevant information to answer your query. "
+                    f"Reason: {rag_quality['reason']}. "
+                    f"Please try rephrasing your question or check if the documents contain the information you need."
+                )
+            
+            # If we have some context but it's low quality, provide it with caveats
+            response_parts = [
+                f"Based on limited context retrieved from the knowledge base:",
+                f"\n{rag_output.summary}",
+                f"\n\n⚠ Note: {rag_quality['reason']}. The above information may not fully answer your query.",
+                f"\nConfidence: {rag_quality['confidence']:.0%}"
+            ]
+            
+            if rag_output.entities:
+                response_parts.append(f"\nMentioned entities: {', '.join(rag_output.entities)}")
+            
+            return "\n".join(response_parts)
+            
+        except Exception as e:
+            logger.error(f"Error in RAG-only synthesis: {str(e)}")
+            return f"Unable to process query due to low-quality results. Reason: {rag_quality['reason']}"

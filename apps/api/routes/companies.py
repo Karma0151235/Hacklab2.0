@@ -7,15 +7,47 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from pymilvus import Collection, connections
 import os
 from collections import defaultdict
 
 from etl.logging_config import get_logger
+from agents.config import AgentConfig
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+_companies_collection = None
+
+
+def _get_companies_collection():
+    global _companies_collection
+    if _companies_collection is not None:
+        return _companies_collection
+
+    try:
+        from pymilvus import Collection, connections
+    except ModuleNotFoundError as e:
+        raise HTTPException(status_code=503, detail=f"Milvus client not available: {str(e)}")
+
+    env_host = os.getenv("MILVUS_HOST")
+    env_port = os.getenv("MILVUS_PORT")
+    milvus_host = env_host if env_host else AgentConfig.MILVUS_HOST
+    milvus_port = int(env_port) if env_port else AgentConfig.MILVUS_PORT
+
+    try:
+        connections.connect("default", host=milvus_host, port=milvus_port)
+    except Exception as e:
+        _companies_collection = None
+        raise HTTPException(status_code=503, detail=f"Milvus connection failed: {str(e)}")
+
+    try:
+        collection = Collection("pdf_text_chunks")
+        collection.load()
+        _companies_collection = collection
+        return _companies_collection
+    except Exception as e:
+        _companies_collection = None
+        raise HTTPException(status_code=503, detail=f"Milvus collection load failed: {str(e)}")
 
 
 # Response Models
@@ -46,27 +78,21 @@ async def get_companies():
     and counts their filings.
     """
     try:
-        # Connect to Milvus
-        milvus_host = os.getenv('MILVUS_HOST', 'localhost')
-        milvus_port = int(os.getenv('MILVUS_PORT', '19639'))
-        
-        try:
-            connections.connect("default", host=milvus_host, port=milvus_port)
-        except Exception:
-            pass  # May already be connected
-        
-        # Get collection
-        collection = Collection("pdf_text_chunks")
-        collection.load()
+        collection = _get_companies_collection()
         
         # Query all entities
         output_fields = ["doc_id", "company_code", "chunk_id"]
         
-        results = collection.query(
-            expr="chunk_id != ''",  # Get all
-            output_fields=output_fields,
-            limit=16384  # Max limit to get all companies
-        )
+        try:
+            results = collection.query(
+                expr="chunk_id != ''",  # Get all
+                output_fields=output_fields,
+                limit=16384  # Max limit to get all companies
+            )
+        except Exception as e:
+            global _companies_collection
+            _companies_collection = None
+            raise HTTPException(status_code=503, detail=f"Milvus query failed: {str(e)}")
         
         # Aggregate by company_code
         companies_map: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
@@ -109,6 +135,8 @@ async def get_companies():
             total=len(companies_list)
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching companies: {str(e)}")
         import traceback

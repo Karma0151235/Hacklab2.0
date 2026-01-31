@@ -82,7 +82,9 @@ If information is insufficient, clearly state this."""
         # Initialize OpenRouter client
         self.client = openai.OpenAI(
             api_key=self.config.OPENROUTER_API_KEY,
-            base_url=self.config.OPENROUTER_BASE_URL
+            base_url=self.config.OPENROUTER_BASE_URL,
+            timeout=self.config.OPENROUTER_TIMEOUT_SECONDS,
+            max_retries=self.config.OPENROUTER_MAX_RETRIES,
         )
 
     def retrieve(self, query: RAGQuery) -> RAGOutput:
@@ -201,7 +203,10 @@ If information is insufficient, clearly state this."""
                     table_data_str = hit.entity.get("table_data", "[]")
                     try:
                         table_data = json.loads(table_data_str) if table_data_str else []
-                    except:
+                        # Normalize table_data to List[List[str]] format
+                        table_data = self._normalize_table_data(table_data)
+                    except Exception as e:
+                        logger.warning(f"Failed to parse table_data for {hit.entity.get('table_id')}: {str(e)}")
                         table_data = []
 
                     chunks.append({
@@ -254,6 +259,51 @@ If information is insufficient, clearly state this."""
                 lines.append(row_text)
 
         return "\n".join(lines)
+
+    def _normalize_table_data(self, data: Any) -> List[List[str]]:
+        """
+        Normalize table_data to List[List[str]] format
+        
+        Handles multiple formats:
+        - List[List[str]]: Return as-is (correct format)
+        - List[Dict]: Convert to list of lists (malformed but recoverable)
+        - Empty/None: Return empty list
+        
+        Args:
+            data: Raw table data from Milvus
+            
+        Returns:
+            List[List[str]]: Normalized table data
+        """
+        if not data:
+            return []
+        
+        # If it's already list of lists, validate and return
+        if isinstance(data, list) and data and isinstance(data[0], list):
+            # Ensure all elements are strings
+            normalized = []
+            for row in data:
+                str_row = [str(cell) if cell is not None else "" for cell in row]
+                normalized.append(str_row)
+            return normalized
+        
+        # If it's list of dicts, convert to list of lists
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            logger.warning(f"Converting malformed table_data from list of dicts to list of lists")
+            # Extract keys as header row
+            headers = list(data[0].keys())
+            rows = [headers]
+            
+            # Extract values as data rows
+            for item in data:
+                row = [str(item.get(h, "")) for h in headers]
+                rows.append(row)
+            
+            return rows
+        
+        # Unknown format
+        logger.error(f"Unknown table_data format: {type(data)}")
+        return []
 
     def _summarize_with_cot(self, query: str, context: str) -> tuple[str, List[str]]:
         """Apply Chain-of-Thought reasoning to summarize context"""

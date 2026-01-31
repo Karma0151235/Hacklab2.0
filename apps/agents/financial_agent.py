@@ -80,7 +80,9 @@ Always show your calculation steps and assumptions."""
         # Initialize OpenRouter client
         self.client = openai.OpenAI(
             api_key=self.config.OPENROUTER_API_KEY,
-            base_url=self.config.OPENROUTER_BASE_URL
+            base_url=self.config.OPENROUTER_BASE_URL,
+            timeout=self.config.OPENROUTER_TIMEOUT_SECONDS,
+            max_retries=self.config.OPENROUTER_MAX_RETRIES,
         )
 
         logger.info("Financial Agent initialized")

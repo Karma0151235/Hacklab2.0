@@ -7,15 +7,47 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel, Field
-from pymilvus import Collection, connections
 import re
 import os
 
 from etl.logging_config import get_logger
+from agents.config import AgentConfig
 
 logger = get_logger(__name__)
 
 router = APIRouter()
+_filings_collection = None
+
+
+def _get_filings_collection():
+    global _filings_collection
+    if _filings_collection is not None:
+        return _filings_collection
+
+    try:
+        from pymilvus import Collection, connections
+    except ModuleNotFoundError as e:
+        raise HTTPException(status_code=503, detail=f"Milvus client not available: {str(e)}")
+
+    env_host = os.getenv("MILVUS_HOST")
+    env_port = os.getenv("MILVUS_PORT")
+    milvus_host = env_host if env_host else AgentConfig.MILVUS_HOST
+    milvus_port = int(env_port) if env_port else AgentConfig.MILVUS_PORT
+
+    try:
+        connections.connect("default", host=milvus_host, port=milvus_port)
+    except Exception as e:
+        _filings_collection = None
+        raise HTTPException(status_code=503, detail=f"Milvus connection failed: {str(e)}")
+
+    try:
+        collection = Collection("pdf_text_chunks")
+        collection.load()
+        _filings_collection = collection
+        return _filings_collection
+    except Exception as e:
+        _filings_collection = None
+        raise HTTPException(status_code=503, detail=f"Milvus collection load failed: {str(e)}")
 
 
 # Response Models
@@ -86,19 +118,18 @@ async def get_filings(
     Aggregates text chunks by doc_id to create Filing objects for timeline display.
     """
     try:
-        # Connect to Milvus
-        milvus_host = os.getenv('MILVUS_HOST', 'localhost')
-        milvus_port = int(os.getenv('MILVUS_PORT', '19639'))
+        collection = _get_filings_collection()
         
-        try:
-            connections.connect("default", host=milvus_host, port=milvus_port)
-        except Exception:
-            pass  # May already be connected
-        
-        # Get collection
-        collection = Collection("pdf_text_chunks")
-        collection.load()
-        
+        # Normalize values if called directly (Query objects are not primitives)
+        if not isinstance(company_code, str):
+            company_code = None
+        if not isinstance(document_type, str):
+            document_type = None
+        if not isinstance(limit, int):
+            limit = 100
+        if not isinstance(offset, int):
+            offset = 0
+
         # Build filter expression
         filter_expr = ""
         if company_code:
@@ -112,19 +143,24 @@ async def get_filings(
         # Query entities
         output_fields = ["chunk_id", "doc_id", "content", "company_code", "document_type", "chunk_order"]
         
-        if filter_expr:
-            results = collection.query(
-                expr=filter_expr,
-                output_fields=output_fields,
-                limit=limit * 10  # Get more to account for grouping
-            )
-        else:
-            # No filter - get recent chunks
-            results = collection.query(
-                expr="chunk_id != ''",  # Get all
-                output_fields=output_fields,
-                limit=limit * 10
-            )
+        try:
+            if filter_expr:
+                results = collection.query(
+                    expr=filter_expr,
+                    output_fields=output_fields,
+                    limit=limit * 10  # Get more to account for grouping
+                )
+            else:
+                # No filter - get recent chunks
+                results = collection.query(
+                    expr="chunk_id != ''",  # Get all
+                    output_fields=output_fields,
+                    limit=limit * 10
+                )
+        except Exception as e:
+            global _filings_collection
+            _filings_collection = None
+            raise HTTPException(status_code=503, detail=f"Milvus query failed: {str(e)}")
         
         # Group by doc_id
         filings_map: Dict[str, Dict[str, Any]] = {}
@@ -195,6 +231,8 @@ async def get_filings(
             offset=offset
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching filings: {str(e)}")
         import traceback

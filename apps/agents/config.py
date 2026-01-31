@@ -22,9 +22,15 @@ class AgentConfig:
     GLM_4_5_MODEL = "deepseek/deepseek-v3.2"  # Fast and cost-effective
     GLM_4_7_MODEL = "deepseek/deepseek-v3.2"  # Same model for consistency
 
+    # OpenRouter client settings
+    OPENROUTER_TIMEOUT_SECONDS = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "30"))
+    OPENROUTER_MAX_RETRIES = int(os.getenv("OPENROUTER_MAX_RETRIES", "2"))
+
     # Milvus Configuration
-    MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
-    MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19639"))
+    _milvus_host = os.getenv("MILVUS_HOST")
+    _milvus_port = os.getenv("MILVUS_PORT")
+    MILVUS_HOST = _milvus_host if _milvus_host else "localhost"
+    MILVUS_PORT = int(_milvus_port) if _milvus_port else 19639
 
     # Collection Names
     TEXT_COLLECTION = "pdf_text_chunks"
@@ -53,5 +59,5 @@ class AgentConfig:
         return True
 
 
-# Validate on import
-AgentConfig.validate()
+# Validation is intentionally not executed on import to avoid
+# crashing the API process when env vars are missing.

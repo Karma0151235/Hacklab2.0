@@ -287,6 +287,9 @@ export interface BursaScrapingRequest {
   year: number
   max_announcements: number
   company_filter?: string
+  resource_efficient?: boolean
+  use_cloudscraper?: boolean
+  manual_captcha_timeout_seconds?: number
 }
 
 export interface BursaScrapingResponse {
@@ -296,6 +299,9 @@ export interface BursaScrapingResponse {
   year: number
   max_announcements: number
   company_filter?: string[]
+  resource_efficient: boolean
+  use_cloudscraper: boolean
+  manual_captcha_timeout_seconds: number
 }
 
 export interface BursaScrapingStatus {
@@ -303,9 +309,12 @@ export interface BursaScrapingStatus {
   status: 'pending' | 'processing' | 'completed' | 'failed'
   progress: number
   phase: string
+  message?: string
   total_announcements: number
   scraped_announcements: number
   errors: string[]
+  ingestion_status?: string
+  ingestion_stats?: Record<string, number>
   created_at: string
   completed_at?: string
 }
@@ -325,6 +334,8 @@ export interface BursaScrapingResults {
   total_announcements: number
   announcements: BursaAnnouncementRecord[]
   video_available: boolean
+  ingestion_stats?: Record<string, number>
+  ingestion_status?: string
 }
 
 /**
