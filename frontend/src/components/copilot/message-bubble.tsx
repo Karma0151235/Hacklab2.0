@@ -60,10 +60,7 @@ export function MessageBubble({
 
       {/* Message Content */}
       <div className={cn('flex-1 min-w-0', isUser ? 'items-end' : 'items-start')}>
-        {/* Agent Workflow Visualization (Assistant only) */}
-        {!isUser && copilotAnswer && (
-          <AgentWorkflow usedAgents={copilotAnswer.source_agents} />
-        )}
+        {/* Agent Workflow Visualization removed - now shows inline during processing only */}
 
         {/* Message Bubble */}
         <div

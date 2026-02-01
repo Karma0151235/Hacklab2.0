@@ -9,6 +9,7 @@ interface ChatInputProps {
   isLoading?: boolean
   placeholder?: string
   className?: string
+  onFocusChange?: (isFocused: boolean) => void
 }
 
 export function ChatInput({
@@ -16,6 +17,7 @@ export function ChatInput({
   isLoading = false,
   placeholder = 'Ask me anything about your filings, alerts, or companies...',
   className,
+  onFocusChange,
 }: ChatInputProps) {
   const [message, setMessage] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -68,6 +70,8 @@ export function ChatInput({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={() => onFocusChange?.(true)}
+            onBlur={() => onFocusChange?.(false)}
             placeholder={placeholder}
             disabled={isLoading}
             rows={1}
@@ -76,14 +80,14 @@ export function ChatInput({
           />
 
           {/* Attachment Button (placeholder for future) */}
-          <button
+          {/* <button
             type="button"
             className="absolute bottom-3 right-3 rounded-md p-1.5 text-text-tertiary transition-colors hover:bg-bg-tertiary hover:text-text-primary"
             title="Attach file (coming soon)"
             disabled
           >
             <Paperclip className="h-4 w-4" />
-          </button>
+          </button> */}
         </div>
 
         {/* Footer */}

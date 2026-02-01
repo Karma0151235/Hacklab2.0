@@ -1,13 +1,15 @@
 "use client"
 
 import { useEffect, useRef, useState } from 'react'
-import { MessageCircle, Trash2, Bot, FileText, BarChart3, AlertTriangle } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { MessageCircle, Trash2, Bot, FileText, BarChart3, AlertTriangle, Sparkles } from 'lucide-react'
 import { useCopilotStore } from '@/stores/use-copilot-store'
 import { MessageBubble } from './message-bubble'
 import { ChatInput } from './chat-input'
 import { SuggestedQuestions } from './suggested-questions'
 import { getCopilotResult, getCopilotStatus, startCopilotJob } from '@/lib/api/copilot'
-import { AgentProgressModal, AgentStep } from './agent-progress-modal'
+import { AgentProgressBubble } from './agent-progress-bubble'
+import { AgentStep } from './agent-progress-modal'
 import { CopilotJobStatus } from '@/lib/types/api'
 
 const SUGGESTED_QUESTIONS = [
@@ -54,9 +56,10 @@ const INITIAL_STEPS: AgentStep[] = [
 export function ChatWindow() {
   const { messages, isLoading, addMessage, clearMessages, setLoading } = useCopilotStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [showProgressModal, setShowProgressModal] = useState(false)
+  const [showProgressBubble, setShowProgressBubble] = useState(false)
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>(INITIAL_STEPS)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [isInputFocused, setIsInputFocused] = useState(false)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
 
   // Auto-scroll logic
@@ -100,7 +103,7 @@ export function ChatWindow() {
             timestamp: new Date().toISOString(),
           }
           addMessage(assistantMessage)
-          setShowProgressModal(false)
+          setShowProgressBubble(false)
           setLoading(false)
           setActiveJobId(null)
         }
@@ -108,7 +111,7 @@ export function ChatWindow() {
           if (pollRef.current) {
             clearInterval(pollRef.current)
           }
-          setShowProgressModal(false)
+          setShowProgressBubble(false)
           setLoading(false)
           setActiveJobId(null)
           const errorMessage = {
@@ -123,7 +126,7 @@ export function ChatWindow() {
         if (pollRef.current) {
           clearInterval(pollRef.current)
         }
-        setShowProgressModal(false)
+        setShowProgressBubble(false)
         setLoading(false)
         setActiveJobId(null)
         const errorMessage = {
@@ -149,7 +152,7 @@ export function ChatWindow() {
 
     setLoading(true)
     setAgentSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'waiting', logs: [] })))
-    setShowProgressModal(true)
+    setShowProgressBubble(true)
 
     try {
       const job = await startCopilotJob(content)
@@ -157,7 +160,7 @@ export function ChatWindow() {
       updateFromStatus(job)
       startPolling(job.job_id)
     } catch (error) {
-      setShowProgressModal(false)
+      setShowProgressBubble(false)
       setLoading(false)
       const errorMessage = {
         id: (Date.now() + 1).toString(),
@@ -189,67 +192,49 @@ export function ChatWindow() {
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      {/* Ambient background label */}
+      {/* Ambient background - FinIntel Logo */}
       {!isLoading && messages.length === 0 && (
         <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
-          <div className="select-none text-[120px] font-semibold tracking-tight text-text-primary/5 sm:text-[160px]">
-            AI Copilot
+          <div className="flex flex-col items-center gap-2 select-none">
+            {/* FinIntel Logo Mark */}
+            <div className="flex h-32 w-32 items-center justify-center rounded-3xl bg-gradient-to-br from-accent-primary/10 to-accent-secondary/5 border border-accent-primary/10">
+              <span className="text-5xl font-bold bg-gradient-to-br from-accent-primary to-accent-secondary bg-clip-text text-transparent">
+                FI
+              </span>
+            </div>
+            <span className="text-xl font-semibold text-text-primary/10">FinIntel</span>
           </div>
         </div>
       )}
 
-      <AgentProgressModal 
-        isOpen={showProgressModal} 
-        onClose={() => setShowProgressModal(false)}
-        steps={agentSteps}
-      />
-
       {/* Messages Container */}
-      <div
-
-        className="flex-1 overflow-y-auto px-6 py-8"
-      >
+      <div className="flex-1 overflow-y-auto px-6 py-8">
         {messages.length === 0 ? (
-          /* Empty State */
-          <div className="group relative flex h-full flex-col items-center justify-center space-y-6">
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-              <div className="mt-2 flex items-center gap-3 rounded-full border border-border-secondary bg-bg-elevated/70 px-4 py-2 shadow-lg">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-primary/15">
-                  <MessageCircle className="h-4 w-4 text-accent-primary" />
-                </div>
-                <div className="text-sm font-semibold text-text-primary">AI Copilot</div>
-                <div className="text-xs text-text-tertiary">
-                  Hover to reveal starter prompts
-                </div>
+          /* Empty State - Simplified */
+          <div className="flex h-full flex-col items-center justify-center">
+            <div className="flex flex-col items-center text-center max-w-lg">
+              {/* Logo */}
+              <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-accent-primary/15 to-accent-secondary/10 border border-accent-primary/20 mb-8">
+                <Sparkles className="h-8 w-8 text-accent-primary" />
               </div>
-            </div>
-
-            <div className="relative w-full max-w-4xl">
-              <div className="rounded-3xl border border-border-secondary bg-bg-secondary/40 p-10 shadow-[0_30px_120px_-60px_rgba(10,120,255,0.45)]">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-primary/15">
-                    <MessageCircle className="h-7 w-7 text-accent-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-semibold text-text-primary">
-                      Ask for intelligence
-                    </h2>
-                    <p className="text-sm text-text-tertiary">
-                      Fast financial context, alerts, and filings in one response.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              
+              {/* Title */}
+              <h1 className="text-2xl font-bold text-text-primary mb-2">
+                FinIntel Copilot
+              </h1>
+              
+              {/* Description */}
+              <p className="text-sm text-text-tertiary mb-12">
+                Your intelligent financial assistant. Ask about companies, filings, alerts, and market insights.
+              </p>
 
               {/* Suggested Questions */}
-              {!isLoading && (
-                <div className="mt-6 w-full opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <SuggestedQuestions
-                    questions={SUGGESTED_QUESTIONS}
-                    onQuestionClick={handleQuestionClick}
-                  />
-                </div>
-              )}
+              <div className="w-full">
+                <SuggestedQuestions
+                  questions={SUGGESTED_QUESTIONS}
+                  onQuestionClick={handleQuestionClick}
+                />
+              </div>
             </div>
           </div>
         ) : (
@@ -265,6 +250,11 @@ export function ChatWindow() {
               />
             ))}
 
+            {/* Inline Progress Bubble */}
+            {showProgressBubble && (
+              <AgentProgressBubble steps={agentSteps} isComplete={false} />
+            )}
+
             {/* Scroll anchor */}
             <div ref={messagesEndRef} />
           </div>
@@ -273,19 +263,32 @@ export function ChatWindow() {
 
       {/* Input Area */}
       <div className="border-t border-border-secondary bg-bg-secondary px-6 py-4">
-        <div className="mx-auto max-w-4xl space-y-4">
-          {/* Suggested Questions (when chat has started) */}
-          {messages.length > 0 && !isLoading && (
-            <SuggestedQuestions
-              questions={SUGGESTED_QUESTIONS.filter(
-                (q) => !messages.some((m) => m.content === q)
-              ).slice(0, 3)}
-              onQuestionClick={handleQuestionClick}
-            />
-          )}
+        <div className="mx-auto max-w-4xl space-y-3">
+          {/* Floating Suggested Questions - Show on focus */}
+          <AnimatePresence>
+            {isInputFocused && messages.length > 0 && !isLoading && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+              >
+                <SuggestedQuestions
+                  questions={SUGGESTED_QUESTIONS.filter(
+                    (q) => !messages.some((m) => m.content === q)
+                  ).slice(0, 3)}
+                  onQuestionClick={handleQuestionClick}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Chat Input */}
-          <ChatInput onSend={handleSendMessage} isLoading={isLoading} />
+          <ChatInput 
+            onSend={handleSendMessage} 
+            isLoading={isLoading} 
+            onFocusChange={setIsInputFocused}
+          />
         </div>
       </div>
     </div>

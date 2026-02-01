@@ -83,12 +83,24 @@ export function CitationBlock({ citations, className }: CitationBlockProps) {
                 </a>
               </div>
 
-              {/* Excerpt */}
-              <div className="rounded-md border border-border-secondary bg-bg-secondary p-3">
-                <p className="font-sans text-sm leading-relaxed text-text-secondary">
-                  "{citation.excerpt}"
-                </p>
-              </div>
+              {/* Excerpt / Referenced Text */}
+              {citation.excerpt && citation.excerpt.trim() && (
+                <div className="mt-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary mb-1 block">
+                    Referenced Text
+                  </span>
+                  <div className="rounded-md border-l-2 border-accent-primary/40 bg-bg-secondary pl-3 pr-3 py-2">
+                    <p className="font-sans text-sm leading-relaxed text-text-secondary italic">
+                      "{citation.excerpt}"
+                    </p>
+                  </div>
+                </div>
+              )}
+              {(!citation.excerpt || !citation.excerpt.trim()) && (
+                <div className="mt-2 text-xs text-text-tertiary italic">
+                  No specific text reference available
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -495,17 +495,58 @@ Be clear, concise, and specific. Include numbers and citations."""
         """Build citations from RAG metadata"""
         citations = []
 
-        for metadata in rag_output.metadata:
-            citation = Citation(
-                filename=metadata.filename,
-                company_name=metadata.company_name,
-                collection=metadata.collection,
-                page_number=metadata.page_number,
-                confidence_score=metadata.confidence_score
-            )
-            citations.append(citation)
+        if getattr(rag_output, "text_chunks", None):
+            for chunk in rag_output.text_chunks:
+                excerpt = self._extract_excerpt(chunk.content)
+                citation = Citation(
+                    filename=chunk.filename,
+                    company_name=chunk.company_name,
+                    collection=chunk.collection,
+                    page_number=chunk.page_number,
+                    confidence_score=chunk.confidence_score,
+                    excerpt=excerpt,
+                    source_url=self._build_source_url(chunk.filename)
+                )
+                citations.append(citation)
+        else:
+            for metadata in rag_output.metadata:
+                citation = Citation(
+                    filename=metadata.filename,
+                    company_name=metadata.company_name,
+                    collection=metadata.collection,
+                    page_number=metadata.page_number,
+                    confidence_score=metadata.confidence_score,
+                    excerpt=None,
+                    source_url=self._build_source_url(metadata.filename)
+                )
+                citations.append(citation)
 
         return citations
+
+    def _extract_excerpt(self, content: str, max_len: int = 240) -> str:
+        """Extract a readable line excerpt from content"""
+        if not content:
+            return ""
+        for line in content.splitlines():
+            clean = line.strip()
+            if clean:
+                return clean[:max_len]
+        return content.strip()[:max_len]
+
+    def _build_source_url(self, filename: str) -> Optional[str]:
+        """Build Bursa announcement URL from doc_id/filename if possible"""
+        if not filename:
+            return None
+        # doc_id format: bursa_{ann_id}
+        if filename.startswith("bursa_"):
+            ann_id = filename.replace("bursa_", "").strip()
+            if ann_id:
+                return (
+                    "https://www.bursamalaysia.com/market_information/"
+                    "announcements/company_announcement/announcement_details"
+                    f"?ann_id={ann_id}"
+                )
+        return None
 
     def _prepare_table_data(self, rag_output) -> Dict[str, Any]:
         """Prepare table data for frontend"""

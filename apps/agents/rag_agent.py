@@ -18,6 +18,7 @@ from agents.schemas import (
     RAGOutput,
     ChunkMetadata,
     TableChunk,
+    TextChunk,
 )
 from agents.config import AgentConfig
 from etl.embeddings.generator import EmbeddingGenerator
@@ -126,12 +127,14 @@ If information is insufficient, clearly state this."""
             # Extract metadata
             metadata = self._extract_metadata(text_results, table_results)
 
-            # Build table chunks
+            # Build table and text chunks
             table_chunks = self._build_table_chunks(table_results)
+            text_chunks = self._build_text_chunks(text_results)
 
             output = RAGOutput(
                 summary=summary,
                 table_chunks=table_chunks,
+                text_chunks=text_chunks,
                 entities=entities,
                 metadata=metadata
             )
@@ -412,3 +415,20 @@ ENTITIES:
             table_chunks.append(table_chunk)
 
         return table_chunks
+
+    def _build_text_chunks(self, text_results: List[Dict]) -> List[TextChunk]:
+        """Build TextChunk objects from retrieved results"""
+        text_chunks = []
+
+        for chunk in text_results:
+            text_chunks.append(TextChunk(
+                chunk_id=chunk.get('chunk_id', ''),
+                filename=chunk.get('filename', 'unknown'),
+                company_name=chunk.get('company_name', 'unknown'),
+                content=chunk.get('content', ''),
+                page_number=chunk.get('page_number'),
+                confidence_score=1.0 / (1.0 + chunk.get('distance', 0.0)),
+                collection=chunk.get('collection', 'pdf_text_chunks')
+            ))
+
+        return text_chunks

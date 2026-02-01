@@ -54,9 +54,9 @@ export async function getCopilotResult(jobId: string): Promise<CopilotAnswer> {
     source_agents: data.agents_used,
     citations: (data.citations || []).map((c: any) => ({
       source: c.filename || c.company_name || 'Unknown',
-      excerpt: c.text,
+      excerpt: c.excerpt || 'No excerpt available',
       page: c.page_number,
-      link: c.source_id ? `/filings/${c.source_id}` : '#',
+      link: c.source_url || '#',
     })),
     tables: [],
     alerts: [],

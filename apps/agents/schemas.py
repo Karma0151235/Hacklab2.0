@@ -37,10 +37,22 @@ class TableChunk(BaseModel):
     metadata: ChunkMetadata
 
 
+class TextChunk(BaseModel):
+    """Retrieved text chunk with content"""
+    chunk_id: str
+    filename: str
+    company_name: str
+    content: str
+    page_number: Optional[int] = None
+    confidence_score: float
+    collection: str
+
+
 class RAGOutput(BaseModel):
     """Output schema for RAG Agent"""
     summary: str = Field(..., description="Summarized context from retrieved chunks")
     table_chunks: List[TableChunk] = Field(default_factory=list)
+    text_chunks: List[TextChunk] = Field(default_factory=list)
     entities: List[str] = Field(default_factory=list, description="Extracted entities")
     metadata: List[ChunkMetadata] = Field(default_factory=list)
 
@@ -139,6 +151,8 @@ class Citation(BaseModel):
     collection: str  # pdf_text_chunks or pdf_table_chunks
     page_number: Optional[int] = None
     confidence_score: float
+    excerpt: Optional[str] = None
+    source_url: Optional[str] = None
 
 
 class SupervisorInput(BaseModel):
