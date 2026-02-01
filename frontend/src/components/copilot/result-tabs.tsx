@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import { FileText, Database, AlertCircle, ChevronDown } from 'lucide-react'
+import { FileText, Database, AlertCircle } from 'lucide-react'
 import { CopilotAnswer } from '@/lib/types/api'
 import ReactMarkdown from 'react-markdown'
 
@@ -13,7 +13,6 @@ interface ResultTabsProps {
 
 export function ResultTabs({ answer, fullContent }: ResultTabsProps) {
   const [activeTab, setActiveTab] = useState<'summary' | 'data' | 'alerts'>('summary')
-  const [showRawReasoning, setShowRawReasoning] = useState(false)
 
   // Cleaning logic: Try to extract the clean answer from the raw output if it contains separators
   // The backend log showed "================ ANSWER ================"
@@ -75,28 +74,6 @@ export function ResultTabs({ answer, fullContent }: ResultTabsProps) {
           <div className="space-y-4">
             <div className="prose prose-sm prose-invert max-w-none text-text-secondary">
               <ReactMarkdown>{cleanAnswer}</ReactMarkdown>
-            </div>
-            
-            {/* Toggle for Raw Reasoning Logs */}
-            <div className="mt-6 border-t border-border-secondary pt-4">
-              <button
-                onClick={() => setShowRawReasoning(!showRawReasoning)}
-                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary hover:text-text-primary"
-              >
-                <ChevronDown
-                  className={cn(
-                    'h-3 w-3 transition-transform',
-                    showRawReasoning ? 'rotate-180' : ''
-                  )}
-                />
-                Show Reasoning & Logs
-              </button>
-              
-              {showRawReasoning && (
-                <div className="mt-2 overflow-x-auto rounded-md bg-bg-tertiary p-3 font-mono text-xs text-text-tertiary">
-                  <pre className="whitespace-pre-wrap">{fullContent}</pre>
-                </div>
-              )}
             </div>
           </div>
         )}

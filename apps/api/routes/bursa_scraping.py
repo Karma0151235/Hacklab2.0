@@ -69,6 +69,12 @@ class BursaScrapingStatus(BaseModel):
     errors: List[str] = Field(default_factory=list)
     ingestion_status: Optional[str] = None
     ingestion_stats: Optional[Dict[str, int]] = None
+    current_company: Optional[str] = None
+    current_title: Optional[str] = None
+    current_url: Optional[str] = None
+    current_category: Optional[str] = None
+    current_year: Optional[int] = None
+    target_companies: Optional[List[str]] = None
     created_at: str
     completed_at: Optional[str] = None
 
@@ -177,6 +183,16 @@ async def run_scraping_task_async(
                     job_statuses[job_id]["scraped_announcements"] = metadata["scraped_count"]
                 if "total_announcements" in metadata:
                     job_statuses[job_id]["total_announcements"] = metadata["total_announcements"]
+                for key in [
+                    "current_company",
+                    "current_title",
+                    "current_url",
+                    "current_category",
+                    "current_year",
+                    "target_companies",
+                ]:
+                    if key in metadata:
+                        job_statuses[job_id][key] = metadata[key]
 
         # Initialize scraper
         scraper = BursaWebScraper(progress_callback=progress_callback)
@@ -187,7 +203,7 @@ async def run_scraping_task_async(
             max_announcements=max_announcements,
             company_filter=company_filter,
             categories=None,
-            scrape_all_categories=False,
+            scrape_all_categories=True,
             resource_efficient=resource_efficient,
             use_cloudscraper=use_cloudscraper,
             manual_captcha_timeout_seconds=manual_captcha_timeout_seconds
@@ -352,7 +368,13 @@ async def start_bursa_scraping(
         "company_filter": companies,
         "resource_efficient": request.resource_efficient,
         "use_cloudscraper": request.use_cloudscraper,
-        "manual_captcha_timeout_seconds": request.manual_captcha_timeout_seconds
+        "manual_captcha_timeout_seconds": request.manual_captcha_timeout_seconds,
+        "current_company": None,
+        "current_title": None,
+        "current_url": None,
+        "current_category": None,
+        "current_year": request.year,
+        "target_companies": companies or [],
     }
     
     # Start scraping in a separate thread (required for Windows + Playwright)
@@ -409,6 +431,12 @@ async def get_bursa_scraping_status(job_id: str):
         errors=job["errors"],
         ingestion_status=job.get("ingestion_status"),
         ingestion_stats=job.get("ingestion_stats"),
+        current_company=job.get("current_company"),
+        current_title=job.get("current_title"),
+        current_url=job.get("current_url"),
+        current_category=job.get("current_category"),
+        current_year=job.get("current_year"),
+        target_companies=job.get("target_companies"),
         created_at=job["created_at"],
         completed_at=job.get("completed_at")
     )

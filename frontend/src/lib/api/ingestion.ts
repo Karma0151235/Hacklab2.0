@@ -315,6 +315,12 @@ export interface BursaScrapingStatus {
   errors: string[]
   ingestion_status?: string
   ingestion_stats?: Record<string, number>
+  current_company?: string
+  current_title?: string
+  current_url?: string
+  current_category?: string
+  current_year?: number
+  target_companies?: string[]
   created_at: string
   completed_at?: string
 }

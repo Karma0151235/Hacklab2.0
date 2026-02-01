@@ -18,9 +18,12 @@ class BursaListingCrawler:
         self, 
         page: Page, 
         base_url: str,
-        category_code: str,
+        category_code: Optional[str],
         category_name: str,
         max_announcements: int = 10,
+        company_filter: Optional[List[str]] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         allow_manual_captcha: bool = True,
         use_cloudscraper: bool = True,
         manual_captcha_timeout_seconds: int = 120
@@ -60,14 +63,22 @@ class BursaListingCrawler:
                 timeout_seconds=manual_captcha_timeout_seconds,
             )
 
-            # Select the category option by value
-            await page.select_option('select[name="cat"]', value=category_code, timeout=5000)
-            await page.wait_for_timeout(800)
+            # Select the category option by value (if provided)
+            if category_code:
+                await page.select_option('select[name="cat"]', value=category_code, timeout=5000)
+                await page.wait_for_timeout(800)
+
+            # Apply optional company/date filters before search
+            if company_filter:
+                await self._apply_company_filter(page, company_filter)
+            if start_date or end_date:
+                await self._apply_date_range(page, start_date, end_date)
             
-            # Click Search button
-            await page.wait_for_selector('.form-submit-btn', timeout=5000)
-            await page.click('.form-submit-btn', timeout=5000)
-            await page.wait_for_timeout(5000)  # Wait longer for AJAX results to load
+            # Click Search button only if filters were applied or category was selected
+            if category_code or company_filter or start_date or end_date:
+                await page.wait_for_selector('.form-submit-btn', timeout=5000)
+                await page.click('.form-submit-btn', timeout=5000)
+                await page.wait_for_timeout(5000)  # Wait longer for AJAX results to load
             
         except Exception as e:
             print(f"Warning: Could not filter by category '{category_name}': {e}")
@@ -95,6 +106,9 @@ class BursaListingCrawler:
         rows_per_page = 20
         max_pages = max(1, math.ceil(max_announcements / rows_per_page))
         max_pages = min(max_pages, 20)
+        # If using filters, scan a few extra pages to find matches even when max <= rows_per_page
+        if company_filter or start_date or end_date:
+            max_pages = max(max_pages, 5)
 
         for page_idx in range(max_pages):
             page_announcements = await self._extract_announcements_from_table(page, category_name)
@@ -119,6 +133,123 @@ class BursaListingCrawler:
                 break
 
         return announcements[:max_announcements]
+
+    async def get_category_options(self, page: Page) -> List[Dict[str, str]]:
+        """
+        Read category options from the listing page select.
+        Returns list of {label, value}.
+        """
+        try:
+            options = await page.evaluate(
+                """() => {
+                    const select = document.querySelector('select[name="cat"]');
+                    if (!select) return [];
+                    return Array.from(select.options || [])
+                      .map(opt => ({
+                        label: (opt.textContent || '').trim(),
+                        value: (opt.value || '').trim()
+                      }));
+                }"""
+            )
+        except Exception:
+            return []
+
+        seen = set()
+        cleaned: List[Dict[str, str]] = []
+        for opt in options:
+            label = (opt.get("label") or "").strip()
+            value = (opt.get("value") or "").strip()
+            if not value or not label:
+                continue
+            if label.lower() in {"all", "all announcements"}:
+                continue
+            key = f"{label}|{value}"
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append({"label": label, "value": value})
+
+        return cleaned
+
+    async def _apply_company_filter(self, page: Page, company_filter: List[str]) -> None:
+        target = company_filter[0] if company_filter else None
+        if not target:
+            return
+
+        normalized_target = " ".join(target.split()).strip().lower()
+
+        # Try select dropdown first
+        try:
+            success = await page.evaluate(
+                """(needle) => {
+                    const selects = Array.from(document.querySelectorAll("select"));
+                    for (const select of selects) {
+                        const options = Array.from(select.options || []);
+                        const match = options.find((opt) =>
+                            opt.textContent && opt.textContent.toLowerCase().includes(needle)
+                        );
+                        if (match) {
+                            select.value = match.value;
+                            select.dispatchEvent(new Event("change", { bubbles: true }));
+                            return true;
+                        }
+                    }
+                    return false;
+                }""",
+                normalized_target,
+            )
+            if success:
+                await page.wait_for_timeout(300)
+                return
+        except Exception:
+            pass
+
+        # Try input/autocomplete
+        try:
+            candidates = [
+                "input[placeholder*='Company' i]",
+                "input[name*='company' i]",
+                "input[id*='company' i]",
+            ]
+            for selector in candidates:
+                locator = page.locator(selector)
+                if await locator.count() > 0:
+                    await locator.first.fill(target)
+                    await locator.first.press("Enter")
+                    await page.wait_for_timeout(300)
+                    return
+        except Exception:
+            pass
+
+    async def _apply_date_range(self, page: Page, start_date: Optional[str], end_date: Optional[str]) -> None:
+        try:
+            if start_date:
+                start_candidates = [
+                    "input[placeholder*='Start' i]",
+                    "input[name*='start' i]",
+                    "input[id*='start' i]",
+                ]
+                for selector in start_candidates:
+                    locator = page.locator(selector)
+                    if await locator.count() > 0:
+                        await locator.first.fill(start_date)
+                        await locator.first.press("Enter")
+                        break
+
+            if end_date:
+                end_candidates = [
+                    "input[placeholder*='End' i]",
+                    "input[name*='end' i]",
+                    "input[id*='end' i]",
+                ]
+                for selector in end_candidates:
+                    locator = page.locator(selector)
+                    if await locator.count() > 0:
+                        await locator.first.fill(end_date)
+                        await locator.first.press("Enter")
+                        break
+        except Exception:
+            pass
 
     async def _wait_for_category_selector(
         self,

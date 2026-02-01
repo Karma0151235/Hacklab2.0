@@ -13,7 +13,7 @@ export interface AgentStep {
   id: string
   name: string
   description: string
-  status: 'waiting' | 'running' | 'completed'
+  status: 'waiting' | 'running' | 'completed' | 'skipped' | 'error'
   logs: string[]
   icon: any
 }
@@ -30,6 +30,8 @@ export function AgentProgressModal({ isOpen, onClose, steps }: AgentProgressModa
   }, [steps])
 
   const currentStep = steps.find(s => s.id === selectedAgent) || steps[0]
+  const activeAgent = steps.find(s => s.status === 'running')?.id
+  const progressPercent = getProgressPercent(currentStep.status)
 
   if (!isOpen) return null
 
@@ -48,18 +50,18 @@ export function AgentProgressModal({ isOpen, onClose, steps }: AgentProgressModa
           className="relative h-[600px] w-full max-w-4xl overflow-hidden rounded-xl border border-border-secondary bg-bg-secondary shadow-2xl"
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-border-secondary px-6 py-4">
+              <div className="flex items-center justify-between border-b border-border-secondary px-6 py-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-primary/10">
                 <Loader2 className="h-5 w-5 animate-spin text-accent-primary" />
               </div>
               <div>
-                <h2 className="font-sans text-lg font-bold text-text-primary">
-                  Processing Query...
-                </h2>
-                <p className="font-sans text-xs text-text-tertiary">
-                  Orchestrating autonomous agents
-                </p>
+                    <h2 className="font-sans text-lg font-bold text-text-primary">
+                      Agent Orchestration
+                    </h2>
+                    <p className="font-sans text-xs text-text-tertiary">
+                      Live backend progress and logs
+                    </p>
               </div>
             </div>
             {/* 
@@ -78,14 +80,69 @@ export function AgentProgressModal({ isOpen, onClose, steps }: AgentProgressModa
                   isSelected={selectedAgent === 'supervisor'}
                   onClick={() => setSelectedAgent('supervisor')}
                   isRoot
+                  isActive={activeAgent === 'supervisor'}
                 />
                 
                 {/* Connections */}
                 <div className="relative h-8 w-full">
                   <svg className="absolute inset-0 h-full w-full overflow-visible">
-                    <path d="M50% 0 L50% 100%" stroke="currentColor" className="stroke-border-secondary" strokeWidth="2" strokeDasharray="4 4" />
-                    <path d="M15% 100% C15% 50, 50% 50, 50% 0" stroke="currentColor" className="stroke-border-secondary" strokeWidth="2" strokeDasharray="4 4" />
-                    <path d="M85% 100% C85% 50, 50% 50, 50% 0" stroke="currentColor" className="stroke-border-secondary" strokeWidth="2" strokeDasharray="4 4" />
+                    {activeAgent === 'rag' ? (
+                      <motion.path
+                        d="M50% 0 L50% 100%"
+                        stroke="currentColor"
+                        className="stroke-blue-400 drop-shadow-[0_0_10px_rgba(59,130,246,0.95)]"
+                        strokeWidth="2.5"
+                        strokeDasharray="6 6"
+                        animate={{ strokeDashoffset: [12, 0] }}
+                        transition={{ repeat: Infinity, duration: 1.1, ease: "linear" }}
+                      />
+                    ) : (
+                      <path
+                        d="M50% 0 L50% 100%"
+                        stroke="currentColor"
+                        className="stroke-border-secondary"
+                        strokeWidth="2"
+                        strokeDasharray="4 4"
+                      />
+                    )}
+                    {activeAgent === 'financial' ? (
+                      <motion.path
+                        d="M15% 100% C15% 50, 50% 50, 50% 0"
+                        stroke="currentColor"
+                        className="stroke-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.95)]"
+                        strokeWidth="2.5"
+                        strokeDasharray="6 6"
+                        animate={{ strokeDashoffset: [12, 0] }}
+                        transition={{ repeat: Infinity, duration: 1.1, ease: "linear" }}
+                      />
+                    ) : (
+                      <path
+                        d="M15% 100% C15% 50, 50% 50, 50% 0"
+                        stroke="currentColor"
+                        className="stroke-border-secondary"
+                        strokeWidth="2"
+                        strokeDasharray="4 4"
+                      />
+                    )}
+                    {activeAgent === 'alert' ? (
+                      <motion.path
+                        d="M85% 100% C85% 50, 50% 50, 50% 0"
+                        stroke="currentColor"
+                        className="stroke-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.95)]"
+                        strokeWidth="2.5"
+                        strokeDasharray="6 6"
+                        animate={{ strokeDashoffset: [12, 0] }}
+                        transition={{ repeat: Infinity, duration: 1.1, ease: "linear" }}
+                      />
+                    ) : (
+                      <path
+                        d="M85% 100% C85% 50, 50% 50, 50% 0"
+                        stroke="currentColor"
+                        className="stroke-border-secondary"
+                        strokeWidth="2"
+                        strokeDasharray="4 4"
+                      />
+                    )}
                   </svg>
                 </div>
 
@@ -95,16 +152,19 @@ export function AgentProgressModal({ isOpen, onClose, steps }: AgentProgressModa
                     step={steps.find(s => s.id === 'rag')!} 
                     isSelected={selectedAgent === 'rag'}
                     onClick={() => setSelectedAgent('rag')}
+                    isActive={activeAgent === 'rag'}
                   />
                   <AgentNode 
                     step={steps.find(s => s.id === 'financial')!} 
                     isSelected={selectedAgent === 'financial'}
                     onClick={() => setSelectedAgent('financial')}
+                    isActive={activeAgent === 'financial'}
                   />
                   <AgentNode 
                     step={steps.find(s => s.id === 'alert')!} 
                     isSelected={selectedAgent === 'alert'}
                     onClick={() => setSelectedAgent('alert')}
+                    isActive={activeAgent === 'alert'}
                   />
                 </div>
               </div>
@@ -135,6 +195,27 @@ export function AgentProgressModal({ isOpen, onClose, steps }: AgentProgressModa
                 </div>
               </div>
 
+              {/* Progress bar */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between text-xs text-text-tertiary">
+                  <span>Progress</span>
+                  <span>{progressPercent}%</span>
+                </div>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-bg-primary">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-700",
+                      currentStep.status === 'running' && "bg-accent-primary",
+                      currentStep.status === 'completed' && "bg-success",
+                      currentStep.status === 'skipped' && "bg-warning",
+                      currentStep.status === 'error' && "bg-error",
+                      currentStep.status === 'waiting' && "bg-border-secondary"
+                    )}
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+
               {/* Live Terminal/Logs */}
               <div className="h-[350px] overflow-hidden rounded-lg border border-border-secondary bg-bg-tertiary font-mono text-xs">
                 <div className="flex items-center border-b border-border-secondary bg-bg-elevated px-4 py-2 text-text-tertiary">
@@ -159,7 +240,7 @@ export function AgentProgressModal({ isOpen, onClose, steps }: AgentProgressModa
                      </div>
                   )}
                   {currentStep.status === 'running' && (
-                     <div className="animate-pulse text-accent-primary">_</div>
+                    <div className="animate-pulse text-accent-primary">_</div>
                   )}
                 </div>
               </div>
@@ -171,7 +252,7 @@ export function AgentProgressModal({ isOpen, onClose, steps }: AgentProgressModa
   )
 }
 
-function AgentNode({ step, isSelected, onClick, isRoot }: { step: AgentStep, isSelected: boolean, onClick: () => void, isRoot?: boolean }) {
+function AgentNode({ step, isSelected, onClick, isRoot, isActive }: { step: AgentStep, isSelected: boolean, onClick: () => void, isRoot?: boolean, isActive?: boolean }) {
   if (!step) return null
   return (
     <button
@@ -182,6 +263,10 @@ function AgentNode({ step, isSelected, onClick, isRoot }: { step: AgentStep, isS
           ? "border-accent-primary bg-accent-primary/5 shadow-[0_0_20px_-5px_rgba(var(--accent-primary),0.3)] scale-105" 
           : "border-border-secondary bg-bg-elevated hover:border-text-tertiary",
         step.status === 'completed' && !isSelected && "border-success/30 bg-success/5",
+        step.status === 'skipped' && !isSelected && "border-warning/30 bg-warning/5",
+        step.status === 'error' && !isSelected && "border-error/30 bg-error/5",
+        step.status === 'running' && !isSelected && "shadow-[0_0_30px_-6px_rgba(56,189,248,0.8)] border-sky-400/40",
+        isActive && step.id === 'supervisor' && "shadow-[0_0_40px_-4px_rgba(168,85,247,0.9)] border-fuchsia-400/50",
         isRoot ? "w-48" : "w-full"
       )}
     >
@@ -189,11 +274,26 @@ function AgentNode({ step, isSelected, onClick, isRoot }: { step: AgentStep, isS
         "mb-2 rounded-full p-2 transition-colors",
         step.status === 'running' && "animate-pulse bg-accent-primary/20",
         step.status === 'completed' && "text-success",
+        step.status === 'skipped' && "text-warning",
+        step.status === 'error' && "text-error",
         step.status === 'waiting' && "text-text-tertiary grayscale"
       )}>
         <step.icon className="h-5 w-5" />
       </div>
       <span className="text-xs font-semibold text-text-primary">{step.name}</span>
+      <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-bg-primary">
+        <div
+          className={cn(
+            "h-full rounded-full transition-all duration-700",
+            step.status === 'running' && "bg-accent-primary",
+            step.status === 'completed' && "bg-success",
+            step.status === 'skipped' && "bg-warning",
+            step.status === 'error' && "bg-error",
+            step.status === 'waiting' && "bg-border-secondary"
+          )}
+          style={{ width: `${getProgressPercent(step.status)}%` }}
+        />
+      </div>
       
       {/* Status Dot */}
       <div className="absolute -right-1 -top-1">
@@ -204,6 +304,8 @@ function AgentNode({ step, isSelected, onClick, isRoot }: { step: AgentStep, isS
              <span className="relative inline-flex h-3 w-3 rounded-full bg-accent-primary"></span>
            </span>
         )}
+        {step.status === 'error' && <CheckCircle2 className="h-4 w-4 text-error fill-bg-secondary" />}
+        {step.status === 'skipped' && <CheckCircle2 className="h-4 w-4 text-warning fill-bg-secondary" />}
       </div>
     </button>
   )
@@ -212,5 +314,15 @@ function AgentNode({ step, isSelected, onClick, isRoot }: { step: AgentStep, isS
 function StatusBadge({ status }: { status: string }) {
     if (status === 'completed') return <span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">Completed</span>
     if (status === 'running') return <span className="rounded-full bg-accent-primary/10 px-2.5 py-1 text-xs font-medium text-accent-primary animate-pulse">Running</span>
+    if (status === 'skipped') return <span className="rounded-full bg-warning/10 px-2.5 py-1 text-xs font-medium text-warning">Skipped</span>
+    if (status === 'error') return <span className="rounded-full bg-error/10 px-2.5 py-1 text-xs font-medium text-error">Error</span>
     return <span className="rounded-full bg-bg-elevated px-2.5 py-1 text-xs font-medium text-text-tertiary">Waiting</span>
+}
+
+function getProgressPercent(status: AgentStep['status']) {
+  if (status === 'completed') return 100
+  if (status === 'error') return 100
+  if (status === 'skipped') return 0
+  if (status === 'running') return 60
+  return 0
 }

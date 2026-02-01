@@ -6,8 +6,9 @@ import { useCopilotStore } from '@/stores/use-copilot-store'
 import { MessageBubble } from './message-bubble'
 import { ChatInput } from './chat-input'
 import { SuggestedQuestions } from './suggested-questions'
-import { sendCopilotMessage } from '@/lib/api/copilot'
+import { getCopilotResult, getCopilotStatus, startCopilotJob } from '@/lib/api/copilot'
 import { AgentProgressModal, AgentStep } from './agent-progress-modal'
+import { CopilotJobStatus } from '@/lib/types/api'
 
 const SUGGESTED_QUESTIONS = [
   'What are the financials of Foodie Media Berhad?',
@@ -55,50 +56,85 @@ export function ChatWindow() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showProgressModal, setShowProgressModal] = useState(false)
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>(INITIAL_STEPS)
+  const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const pollRef = useRef<NodeJS.Timeout | null>(null)
 
   // Auto-scroll logic
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Simulation logic for the progress modal
-  const simulateAgentProgress = async () => {
-    setAgentSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'waiting', logs: [] })))
-    setShowProgressModal(true)
-
-    // 1. Supervisor Start
-    updateStep('supervisor', 'running', ['Initializing Supervisor Agent...', 'Analyzing query intent...'])
-    await new Promise(r => setTimeout(r, 800))
-
-    // 2. Supervisor -> RAG
-    updateStep('supervisor', 'running', ['Delegating to RAG Agent for context retrieval...'])
-    updateStep('rag', 'running', ['Connecting to Milvus vector DB...', 'Generating query embeddings...'])
-    await new Promise(r => setTimeout(r, 1200))
-
-    // 3. RAG Working
-    updateStep('rag', 'running', ['Retrieved 2 text chunks', 'Retrieved 1 table chunks', 'Context score: 0.85'])
-    await new Promise(r => setTimeout(r, 800))
-    updateStep('rag', 'completed', ['Context retrieval successful'])
-
-    // 4. Parallel Agents (Financial & Alert)
-    updateStep('supervisor', 'running', ['Dispatching derived data to specialist agents...'])
-    updateStep('financial', 'running', ['Parsing financial statements...', 'Calculating YoY growth metrics...'])
-    updateStep('alert', 'running', ['Scanning for high-severity risk signals...', 'Cross-referencing filing metadata...'])
-    
-    // Continue running until real response comes back in handleSendMessage
+  const updateFromStatus = (status: CopilotJobStatus) => {
+    setAgentSteps(prev => prev.map(step => {
+      const agentStatus = status.agents?.[step.id]
+      if (!agentStatus) {
+        return step
+      }
+      return {
+        ...step,
+        status: agentStatus.status as AgentStep['status'],
+        logs: agentStatus.logs || [],
+        description: agentStatus.latest_message || step.description,
+      }
+    }))
   }
 
-  const updateStep = (id: string, status: AgentStep['status'], newLogs: string[]) => {
-    setAgentSteps(prev => prev.map(step => {
-      if (step.id === id) {
-        return {
-          ...step,
-          status: status === 'waiting' ? step.status : status, // Don't revert directly
-          logs: [...step.logs, ...newLogs.map(l => `${new Date().toLocaleTimeString()} - ${l}`)]
+  const startPolling = (jobId: string) => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+    }
+    pollRef.current = setInterval(async () => {
+      try {
+        const status = await getCopilotStatus(jobId)
+        updateFromStatus(status)
+        if (status.status === 'completed') {
+          if (pollRef.current) {
+            clearInterval(pollRef.current)
+          }
+          const answer = await getCopilotResult(jobId)
+          const assistantMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant' as const,
+            content: answer.answer_text,
+            copilotAnswer: answer,
+            timestamp: new Date().toISOString(),
+          }
+          addMessage(assistantMessage)
+          setShowProgressModal(false)
+          setLoading(false)
+          setActiveJobId(null)
         }
+        if (status.status === 'error') {
+          if (pollRef.current) {
+            clearInterval(pollRef.current)
+          }
+          setShowProgressModal(false)
+          setLoading(false)
+          setActiveJobId(null)
+          const errorMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant' as const,
+            content: status.error || 'Copilot job failed. Please try again.',
+            timestamp: new Date().toISOString(),
+          }
+          addMessage(errorMessage)
+        }
+      } catch (error) {
+        if (pollRef.current) {
+          clearInterval(pollRef.current)
+        }
+        setShowProgressModal(false)
+        setLoading(false)
+        setActiveJobId(null)
+        const errorMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant' as const,
+          content: 'I ran into an error retrieving live progress. Please try again.',
+          timestamp: new Date().toISOString(),
+        }
+        addMessage(errorMessage)
       }
-      return step
-    }))
+    }, 1000)
   }
 
   const handleSendMessage = async (content: string) => {
@@ -111,44 +147,25 @@ export function ChatWindow() {
     }
     addMessage(userMessage)
 
-    // Start UI process
     setLoading(true)
-    simulateAgentProgress()
+    setAgentSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'waiting', logs: [] })))
+    setShowProgressModal(true)
 
     try {
-      // Logic to keep the "running" simulation going a bit if API is too fast, 
-      // but usually API takes a few seconds.
-      const answer = await sendCopilotMessage(content)
-
-      // Complete all steps visually
-      updateStep('financial', 'completed', ['Analysis complete', 'Metrics derived successfully'])
-      updateStep('alert', 'completed', ['Risk scan complete', '0 active alerts found'])
-      updateStep('supervisor', 'completed', ['Synthesizing final response...', 'Workflow successful'])
-      
-      // Short delay to let user see "Completed" state
-      await new Promise(r => setTimeout(r, 800))
-      setShowProgressModal(false)
-
-      // Add assistant message
-      const assistantMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant' as const,
-        content: answer.answer_text,
-        copilotAnswer: answer,
-        timestamp: new Date().toISOString(),
-      }
-      addMessage(assistantMessage)
+      const job = await startCopilotJob(content)
+      setActiveJobId(job.job_id)
+      updateFromStatus(job)
+      startPolling(job.job_id)
     } catch (error) {
       setShowProgressModal(false)
+      setLoading(false)
       const errorMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
-        content: 'I apologize, but I encountered an error processing your request. Please try again.',
+        content: 'I apologize, but I encountered an error starting the copilot job. Please try again.',
         timestamp: new Date().toISOString(),
       }
       addMessage(errorMessage)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -162,8 +179,25 @@ export function ChatWindow() {
     }
   }
 
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+      }
+    }
+  }, [])
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col overflow-hidden">
+      {/* Ambient background label */}
+      {!isLoading && messages.length === 0 && (
+        <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
+          <div className="select-none text-[120px] font-semibold tracking-tight text-text-primary/5 sm:text-[160px]">
+            AI Copilot
+          </div>
+        </div>
+      )}
+
       <AgentProgressModal 
         isOpen={showProgressModal} 
         onClose={() => setShowProgressModal(false)}
@@ -177,25 +211,45 @@ export function ChatWindow() {
       >
         {messages.length === 0 ? (
           /* Empty State */
-          <div className="flex h-full flex-col items-center justify-center space-y-6">
-            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent-primary/10">
-              <MessageCircle className="h-10 w-10 text-accent-primary" />
-            </div>
-            <div className="text-center">
-              <h2 className="mb-2 font-sans text-2xl font-bold text-text-primary">
-                Welcome to Copilot
-              </h2>
-              <p className="font-sans text-base text-text-secondary">
-                Ask me anything about your companies, filings, or alerts
-              </p>
+          <div className="group relative flex h-full flex-col items-center justify-center space-y-6">
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+              <div className="mt-2 flex items-center gap-3 rounded-full border border-border-secondary bg-bg-elevated/70 px-4 py-2 shadow-lg">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-primary/15">
+                  <MessageCircle className="h-4 w-4 text-accent-primary" />
+                </div>
+                <div className="text-sm font-semibold text-text-primary">AI Copilot</div>
+                <div className="text-xs text-text-tertiary">
+                  Hover to reveal starter prompts
+                </div>
+              </div>
             </div>
 
-            {/* Suggested Questions */}
-            <div className="w-full max-w-3xl">
-              <SuggestedQuestions
-                questions={SUGGESTED_QUESTIONS}
-                onQuestionClick={handleQuestionClick}
-              />
+            <div className="relative w-full max-w-4xl">
+              <div className="rounded-3xl border border-border-secondary bg-bg-secondary/40 p-10 shadow-[0_30px_120px_-60px_rgba(10,120,255,0.45)]">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-primary/15">
+                    <MessageCircle className="h-7 w-7 text-accent-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-semibold text-text-primary">
+                      Ask for intelligence
+                    </h2>
+                    <p className="text-sm text-text-tertiary">
+                      Fast financial context, alerts, and filings in one response.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Suggested Questions */}
+              {!isLoading && (
+                <div className="mt-6 w-full opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                  <SuggestedQuestions
+                    questions={SUGGESTED_QUESTIONS}
+                    onQuestionClick={handleQuestionClick}
+                  />
+                </div>
+              )}
             </div>
           </div>
         ) : (

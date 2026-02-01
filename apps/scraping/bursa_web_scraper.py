@@ -45,10 +45,12 @@ class BursaWebScraper:
     async def scrape(
         self,
         year: int = 2025,
-        max_announcements: int = 10,
+        max_announcements: int = 100,
         company_filter: List[str] = None,
+        start_date: str = None,
+        end_date: str = None,
         categories: List[str] = None,
-        scrape_all_categories: bool = False,
+        scrape_all_categories: bool = True,
         resource_efficient: bool = False,
         use_cloudscraper: bool = True,
         manual_captcha_timeout_seconds: int = 120
@@ -97,9 +99,29 @@ class BursaWebScraper:
             
             
             
-            # Phase 5: Determine which categories to scrape (now only Financial Result)
-            if scrape_all_categories:
-                categories_to_scrape = list(CATEGORY_CONFIG.items())
+            # Phase 5: Determine which categories to scrape
+            crawler = BursaListingCrawler()
+            if scrape_all_categories and not categories:
+                # Fast path: scrape all at once (no category selection)
+                categories_to_scrape = [("All Announcements", {
+                    "cat_code": None,
+                    "folder_name": "all_announcements",
+                    "url": self.base_url,
+                })]
+            elif scrape_all_categories:
+                # Try to read category options dynamically from the page
+                option_list = await crawler.get_category_options(page)
+                if option_list:
+                    categories_to_scrape = [
+                        (opt["label"], {
+                            "cat_code": opt["value"],
+                            "folder_name": opt["label"].lower().replace(" ", "_"),
+                            "url": self.base_url,
+                        })
+                        for opt in option_list
+                    ]
+                else:
+                    categories_to_scrape = list(CATEGORY_CONFIG.items())
             elif categories:
                 # Filter to requested categories
                 categories_to_scrape = [(k, v) for k, v in CATEGORY_CONFIG.items() if k in categories]
@@ -115,7 +137,6 @@ class BursaWebScraper:
             )
             
             # Phase 6: Iterate through categories using direct URLs
-            crawler = BursaListingCrawler()
             
             for cat_idx, (category_name, config) in enumerate(categories_to_scrape):
                 cat_progress = 40 + int((cat_idx / len(categories_to_scrape)) * 20)
@@ -123,7 +144,11 @@ class BursaWebScraper:
                     "detecting",
                     cat_progress,
                     f"Category: {category_name}",
-                    metadata={"category": category_name}
+                    metadata={
+                        "current_category": category_name,
+                        "current_year": year,
+                        "target_companies": company_filter or [],
+                    }
                 )
                 
                 
@@ -134,6 +159,9 @@ class BursaWebScraper:
                     config["cat_code"],  # Use category code for filtering
                     category_name,
                     max_announcements,
+                    company_filter=company_filter,
+                    start_date=start_date,
+                    end_date=end_date,
                     allow_manual_captcha=not resource_efficient,
                     use_cloudscraper=use_cloudscraper,
                     manual_captcha_timeout_seconds=manual_captcha_timeout_seconds
@@ -143,9 +171,10 @@ class BursaWebScraper:
                 if company_filter:
                     filtered_announcements = []
                     for ann in category_announcements:
-                        company_name = ann.get('company_name', '').upper()
+                        company_name = ann.get('company_name', '')
+                        normalized_company = re.sub(r"\s+", " ", company_name).strip().upper()
                         # Check if any filter term matches the company name
-                        if any(filter_term.upper() in company_name for filter_term in company_filter):
+                        if any(re.sub(r"\s+", " ", filter_term).strip().upper() in normalized_company for filter_term in company_filter):
                             filtered_announcements.append(ann)
                     
                     logger.info(f"[Company Filter] Filtered {len(category_announcements)} → {len(filtered_announcements)} announcements")
@@ -177,7 +206,15 @@ class BursaWebScraper:
                     "scraping",
                     progress_percent,
                     f"Scraping {idx + 1}/{len(self.announcements)}: {announcement['title'][:30]}...",
-                    metadata={"scraped_count": idx + 1, "total_announcements": len(self.announcements)}
+                    metadata={
+                        "scraped_count": idx + 1,
+                        "total_announcements": len(self.announcements),
+                        "current_company": announcement.get("company_name"),
+                        "current_title": announcement.get("title"),
+                        "current_url": announcement.get("detail_page_url"),
+                        "current_category": announcement.get("category"),
+                        "current_year": year,
+                    }
                 )
                 
                 # Navigate to detail page

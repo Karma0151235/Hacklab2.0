@@ -28,7 +28,15 @@ export const useBursaScrapeStore = create<BursaScrapeState>()(
       announcements: [],
       videoAvailable: false,
       lastUpdated: undefined,
-      setJobId: (jobId) => set({ jobId }),
+      setJobId: (jobId) =>
+        set((state) => ({
+          jobId,
+          status: jobId && jobId !== state.jobId ? undefined : state.status,
+          results: jobId && jobId !== state.jobId ? undefined : state.results,
+          announcements: jobId && jobId !== state.jobId ? [] : state.announcements,
+          videoAvailable: jobId && jobId !== state.jobId ? false : state.videoAvailable,
+          lastUpdated: new Date().toISOString(),
+        })),
       setStatus: (status) =>
         set({
           status,

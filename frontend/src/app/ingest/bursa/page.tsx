@@ -51,6 +51,7 @@ export default function BursaScraperPage() {
   const handleStartScraping = async () => {
     setIsStarting(true)
     setError(null)
+    setLogFeed([])
     
     try {
       const response = await startBursaScraping({
@@ -274,6 +275,45 @@ export default function BursaScraperPage() {
                 <p className="text-xs text-cyan-300">{jobStatus.message}</p>
               )}
             </div>
+
+            {/* Active Context */}
+            {(jobStatus.current_company || jobStatus.current_title || jobStatus.current_url) && (
+              <div className="rounded-xl border border-gray-800 bg-gray-950/60 p-4 text-sm text-gray-300">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Target</p>
+                    <p className="text-sm text-gray-200">
+                      {jobStatus.target_companies?.length
+                        ? jobStatus.target_companies.join(', ')
+                        : 'All companies'}
+                      {jobStatus.current_year ? ` • FY${jobStatus.current_year}` : ''}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Category</p>
+                    <p className="text-sm text-gray-200">
+                      {jobStatus.current_category || 'All categories'}
+                    </p>
+                  </div>
+                </div>
+                {jobStatus.current_title && (
+                  <div className="mt-3">
+                    <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Now Scraping</p>
+                    <p className="text-sm text-cyan-200">{jobStatus.current_title}</p>
+                  </div>
+                )}
+                {jobStatus.current_url && (
+                  <a
+                    href={jobStatus.current_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block truncate text-xs text-cyan-400 hover:text-cyan-300"
+                  >
+                    {jobStatus.current_url}
+                  </a>
+                )}
+              </div>
+            )}
             
             {/* Stats */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

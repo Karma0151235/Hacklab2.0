@@ -3,9 +3,10 @@ Supervisor Agent for Market Intelligence
 Orchestrates RAG, Financial, and Alert agents to provide comprehensive intelligence
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Callable
 import sys
 from pathlib import Path
+from time import perf_counter
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -47,9 +48,9 @@ class SupervisorAgent:
     Include citations (filename, company name, collection) and reconstructed
     table chunks as Pandas DataFrame.
 
-    Use Chain-of-Thought reasoning where necessary.
+    Provide concise, evidence-backed reasoning.
 
-    Goal: produce explainable, actionable intelligence with evidence-based reasoning.
+    Goal: produce explainable, actionable intelligence with evidence-based support.
     """
 
     SYSTEM_PROMPT = """You are the Supervisor Agent for market intelligence.
@@ -58,13 +59,12 @@ Your role:
 1. Analyze user queries to determine which agents to invoke
 2. Coordinate RAG, Financial, and Alert agents
 3. Aggregate outputs into coherent, evidence-backed responses
-4. Apply Chain-of-Thought reasoning to connect insights
-5. Provide step-by-step explanations
+4. Connect insights with concise reasoning
+5. Provide clear, structured explanations
 6. Include citations and source references
 7. Surface actionable intelligence and alerts
 
 Always:
-- Show your reasoning process
 - Reference specific sources and data points
 - Prioritize accuracy over speculation
 - Clearly indicate confidence levels"""
@@ -89,7 +89,11 @@ Always:
 
         logger.info("Supervisor Agent initialized")
 
-    def process(self, input_data: SupervisorInput) -> SupervisorOutput:
+    def process(
+        self,
+        input_data: SupervisorInput,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> SupervisorOutput:
         """
         Process user query by orchestrating agents
 
@@ -104,21 +108,70 @@ Always:
 
             steps = []
             agents_used = []
+            overall_start = perf_counter()
+
+            self._emit_progress(
+                progress_callback,
+                agent_id="supervisor",
+                status="running",
+                message="Analyzing query and orchestrating agents",
+                step="Supervisor started"
+            )
 
             # Step 1: Determine which agents to call
             steps.append("Analyzing query to determine required agents")
             agent_plan = self._plan_agent_execution(input_data.query)
-            steps.append(f"Plan: {agent_plan}")
+            self._emit_progress(
+                progress_callback,
+                agent_id="supervisor",
+                status="running",
+                message="Agent plan created",
+                step="Agent plan created"
+            )
+            if not agent_plan.get("use_financial"):
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="financial",
+                    status="skipped",
+                    message="Skipped: financial analysis not required",
+                    step="Financial agent skipped"
+                )
+            if not agent_plan.get("use_alert"):
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="alert",
+                    status="skipped",
+                    message="Skipped: alert analysis not required",
+                    step="Alert agent skipped"
+                )
 
             # Step 2: Always call RAG agent for context
             steps.append("Retrieving relevant context from knowledge base")
+            rag_start = perf_counter()
+            self._emit_progress(
+                progress_callback,
+                agent_id="rag",
+                status="running",
+                message="Retrieving relevant context from knowledge base",
+                step="RAG retrieval started"
+            )
             rag_output = self.rag_agent.retrieve(RAGQuery(
                 query=input_data.query,
                 top_k_text=self.config.TOP_K_TEXT,
                 top_k_table=self.config.TOP_K_TABLE
             ))
+            rag_duration = perf_counter() - rag_start
             agents_used.append("RAG")
+            text_chunks = len([m for m in rag_output.metadata if m.collection == self.config.TEXT_COLLECTION])
+            table_chunks = len([m for m in rag_output.metadata if m.collection == self.config.TABLE_COLLECTION])
             steps.append(f"Retrieved {len(rag_output.metadata)} chunks from knowledge base")
+            self._emit_progress(
+                progress_callback,
+                agent_id="rag",
+                status="completed",
+                message=f"Retrieved {text_chunks} text + {table_chunks} table chunks in {rag_duration:.1f}s",
+                step="RAG retrieval completed"
+            )
             
             # Early-exit check: Skip expensive agent calls if RAG returns no/low-quality results
             rag_quality = self._assess_rag_quality(rag_output)
@@ -126,6 +179,20 @@ Always:
                 logger.warning(f"Low RAG quality detected ({rag_quality['reason']}), skipping Financial/Alert agents")
                 steps.append(f"⚠ Low-quality RAG results detected: {rag_quality['reason']}")
                 steps.append("Skipping expensive agent calls to optimize performance")
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="financial",
+                    status="skipped",
+                    message="Skipped due to low-quality RAG results",
+                    step="Financial agent skipped"
+                )
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="alert",
+                    status="skipped",
+                    message="Skipped due to low-quality RAG results",
+                    step="Alert agent skipped"
+                )
                 
                 # Return early with just RAG results
                 answer = self._synthesize_response_rag_only(
@@ -138,6 +205,14 @@ Always:
                 citations = self._build_citations(rag_output)
                 table_data = self._prepare_table_data(rag_output)
                 confidence = rag_quality["confidence"]
+                total_duration = perf_counter() - overall_start
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="supervisor",
+                    status="completed",
+                    message=f"Completed with RAG-only response in {total_duration:.1f}s",
+                    step="Supervisor completed"
+                )
                 
                 return SupervisorOutput(
                     answer=answer,
@@ -152,28 +227,68 @@ Always:
             financial_output = None
             if agent_plan.get("use_financial"):
                 steps.append("Analyzing financial metrics and calculations")
+                financial_start = perf_counter()
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="financial",
+                    status="running",
+                    message="Analyzing financial metrics and calculations",
+                    step="Financial agent started"
+                )
                 financial_output = self.financial_agent.analyze(FinancialAgentInput(
                     query=input_data.query,
                     context={"rag_output": rag_output.dict()}
                 ))
+                financial_duration = perf_counter() - financial_start
                 agents_used.append("Financial")
                 metrics_count = sum(1 for v in financial_output.metrics.dict().values() if v is not None)
                 steps.append(f"Calculated {metrics_count} financial metrics")
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="financial",
+                    status="completed",
+                    message=f"Calculated {metrics_count} metrics in {financial_duration:.1f}s",
+                    step="Financial agent completed"
+                )
 
             # Step 4: Call Alert Agent if needed
             alert_output = None
             if agent_plan.get("use_alert") or financial_output:
                 steps.append("Evaluating alerts and risk indicators")
+                alert_start = perf_counter()
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="alert",
+                    status="running",
+                    message="Evaluating alerts and risk indicators",
+                    step="Alert agent started"
+                )
                 alert_output = self.alert_agent.evaluate(AlertAgentInput(
                     query=input_data.query,
                     financial_metrics=financial_output.metrics if financial_output else None,
                     rag_context=rag_output
                 ))
+                alert_duration = perf_counter() - alert_start
                 agents_used.append("Alert")
                 steps.append(f"Generated {len(alert_output.alerts)} alerts")
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="alert",
+                    status="completed",
+                    message=f"Generated {len(alert_output.alerts)} alerts in {alert_duration:.1f}s",
+                    step="Alert agent completed"
+                )
 
             # Step 5: Aggregate outputs
             steps.append("Aggregating outputs and synthesizing final response")
+            synthesis_start = perf_counter()
+            self._emit_progress(
+                progress_callback,
+                agent_id="supervisor",
+                status="running",
+                message="Synthesizing final response",
+                step="Response synthesis started"
+            )
             answer = self._synthesize_response(
                 input_data.query,
                 rag_output,
@@ -181,6 +296,7 @@ Always:
                 alert_output,
                 steps
             )
+            synthesis_duration = perf_counter() - synthesis_start
 
             # Step 6: Build citations
             citations = self._build_citations(rag_output)
@@ -200,11 +316,26 @@ Always:
                 confidence_score=confidence
             )
 
+            total_duration = perf_counter() - overall_start
             logger.info(f"Supervisor completed: {len(agents_used)} agents used, {len(citations)} citations")
+            self._emit_progress(
+                progress_callback,
+                agent_id="supervisor",
+                status="completed",
+                message=f"Synthesis in {synthesis_duration:.1f}s · Total {total_duration:.1f}s",
+                step="Supervisor completed"
+            )
             return output
 
         except Exception as e:
             logger.error(f"Supervisor Agent error: {str(e)}")
+            self._emit_progress(
+                progress_callback,
+                agent_id="supervisor",
+                status="error",
+                message=f"Supervisor error: {str(e)}",
+                step="Supervisor error"
+            )
             return SupervisorOutput(
                 answer=f"Error processing query: {str(e)}",
                 agents_used=[],
@@ -212,6 +343,25 @@ Always:
                 steps=["Error occurred during processing"],
                 confidence_score=0.0
             )
+
+    def _emit_progress(
+        self,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]],
+        agent_id: str,
+        status: str,
+        message: str,
+        step: Optional[str] = None
+    ) -> None:
+        if not progress_callback:
+            return
+        payload = {
+            "agent_id": agent_id,
+            "status": status,
+            "message": message,
+        }
+        if step:
+            payload["step"] = step
+        progress_callback(payload)
 
     def _plan_agent_execution(self, query: str) -> Dict[str, bool]:
         """Determine which agents to call based on query"""
@@ -320,8 +470,7 @@ Generate a response that:
 2. Includes specific data points and evidence
 3. References sources (filename, company)
 4. Highlights key findings and alerts
-5. Uses Chain-of-Thought reasoning to connect insights
-6. Provides actionable intelligence
+5. Provides concise reasoning and actionable intelligence
 
 Be clear, concise, and specific. Include numbers and citations."""
 

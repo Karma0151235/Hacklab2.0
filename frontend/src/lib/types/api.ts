@@ -54,6 +54,27 @@ export interface CopilotAnswer {
   source_agents: string[] // ["rag", "sql", "financial"]
 }
 
+export interface CopilotAgentStatus {
+  status: 'waiting' | 'running' | 'completed' | 'skipped' | 'error'
+  logs: string[]
+  latest_message: string
+  started_at?: string
+  completed_at?: string
+  duration_ms?: number
+}
+
+export interface CopilotJobStatus {
+  job_id: string
+  query: string
+  status: 'running' | 'completed' | 'error'
+  started_at: string
+  updated_at: string
+  completed_at?: string
+  error?: string
+  steps: string[]
+  agents: Record<string, CopilotAgentStatus>
+}
+
 export interface FinancialRatio {
   ratio_name: string
   ratio_value: number

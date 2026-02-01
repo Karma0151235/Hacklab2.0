@@ -3,7 +3,7 @@ LangGraph Workflow for Market Intelligence
 Orchestrates agent execution with state management
 """
 
-from typing import TypedDict, Annotated, Sequence
+from typing import TypedDict, Annotated, Sequence, Optional, Callable, Dict, Any
 import sys
 from pathlib import Path
 import operator
@@ -30,6 +30,7 @@ class AgentState(TypedDict):
     supervisor_output: SupervisorOutput
     messages: Annotated[Sequence[BaseMessage], operator.add]
     error: str
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]]
 
 
 class IntelligenceFlow:
@@ -93,10 +94,11 @@ class IntelligenceFlow:
             logger.info("Executing supervisor node")
 
             query = state["query"]
+            progress_callback = state.get("progress_callback")
 
             # Call supervisor
             supervisor_input = SupervisorInput(query=query)
-            supervisor_output = self.supervisor.process(supervisor_input)
+            supervisor_output = self.supervisor.process(supervisor_input, progress_callback=progress_callback)
 
             state["supervisor_output"] = supervisor_output
 
@@ -147,7 +149,7 @@ class IntelligenceFlow:
             return "error"
         return "continue"
 
-    def run(self, query: str) -> SupervisorOutput:
+    def run(self, query: str, progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> SupervisorOutput:
         """
         Run intelligence workflow for a query
 
@@ -165,7 +167,8 @@ class IntelligenceFlow:
                 "query": query,
                 "supervisor_output": None,
                 "messages": [],
-                "error": ""
+                "error": "",
+                "progress_callback": progress_callback,
             }
 
             # Execute workflow
@@ -189,7 +192,7 @@ class IntelligenceFlow:
                 confidence_score=0.0
             )
 
-    async def arun(self, query: str) -> SupervisorOutput:
+    async def arun(self, query: str, progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> SupervisorOutput:
         """
         Async version of run
 
@@ -207,7 +210,8 @@ class IntelligenceFlow:
                 "query": query,
                 "supervisor_output": None,
                 "messages": [],
-                "error": ""
+                "error": "",
+                "progress_callback": progress_callback,
             }
 
             # Execute workflow asynchronously
