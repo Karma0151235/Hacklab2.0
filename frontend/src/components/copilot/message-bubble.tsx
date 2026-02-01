@@ -159,7 +159,14 @@ export function MessageBubble({
             isUser ? 'text-right' : 'text-left'
           )}
         >
-          {format(new Date(timestamp), 'HH:mm')}
+          {(() => {
+            try {
+              const date = new Date(timestamp)
+              return isNaN(date.getTime()) ? '' : format(date, 'HH:mm')
+            } catch {
+              return ''
+            }
+          })()}
         </div>
       </div>
     </div>

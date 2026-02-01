@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageCircle, Trash2, Bot, FileText, BarChart3, AlertTriangle, Sparkles } from 'lucide-react'
-import { useCopilotStore } from '@/stores/use-copilot-store'
+import { useCopilotStore, INITIAL_STEPS, AgentStepState } from '@/stores/use-copilot-store'
 import { MessageBubble } from './message-bubble'
 import { ChatInput } from './chat-input'
 import { SuggestedQuestions } from './suggested-questions'
@@ -18,57 +18,63 @@ const SUGGESTED_QUESTIONS = [
   'Does Foodie Media Berhad have any recent alerts?',
 ]
 
-const INITIAL_STEPS: AgentStep[] = [
-  {
-    id: 'supervisor',
-    name: 'Supervisor Agent',
-    description: 'Orchestrating workflow...',
-    status: 'waiting',
-    logs: [],
-    icon: Bot
-  },
-  {
-    id: 'rag',
-    name: 'RAG Agent',
-    description: 'Retrieving documents...',
-    status: 'waiting',
-    logs: [],
-    icon: FileText
-  },
-  {
-    id: 'financial',
-    name: 'Financial Agent',
-    description: 'Analyzing metrics...',
-    status: 'waiting',
-    logs: [],
-    icon: BarChart3
-  },
-  {
-    id: 'alert',
-    name: 'Alert Agent',
-    description: 'Checking risks...',
-    status: 'waiting',
-    logs: [],
-    icon: AlertTriangle
+// Map store steps to component steps with icons
+const mapStepsWithIcons = (steps: AgentStepState[]): AgentStep[] => {
+  const iconMap: Record<string, typeof Bot> = {
+    supervisor: Bot,
+    rag: FileText,
+    financial: BarChart3,
+    alert: AlertTriangle,
   }
-]
+  return steps.map(step => ({
+    ...step,
+    icon: iconMap[step.id] || Bot
+  }))
+}
 
 export function ChatWindow() {
-  const { messages, isLoading, addMessage, clearMessages, setLoading } = useCopilotStore()
+  const { 
+    messages, 
+    isLoading, 
+    addMessage, 
+    clearMessages, 
+    setLoading,
+    activeJobId,
+    agentSteps,
+    showProgressBubble,
+    setActiveJob,
+    setAgentSteps,
+    setShowProgressBubble,
+    resetJobState
+  } = useCopilotStore()
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [showProgressBubble, setShowProgressBubble] = useState(false)
-  const [agentSteps, setAgentSteps] = useState<AgentStep[]>(INITIAL_STEPS)
-  const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [isInputFocused, setIsInputFocused] = useState(false)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
+  const hasResumedRef = useRef(false)
 
   // Auto-scroll logic
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Resume polling if there's an active job when returning to page
+  useEffect(() => {
+    if (activeJobId && showProgressBubble && !hasResumedRef.current) {
+      hasResumedRef.current = true
+      setLoading(true)
+      startPolling(activeJobId)
+    }
+    
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+      }
+    }
+  }, [activeJobId, showProgressBubble])
+
   const updateFromStatus = (status: CopilotJobStatus) => {
-    setAgentSteps(prev => prev.map(step => {
+    const updated = agentSteps.map(step => {
       const agentStatus = status.agents?.[step.id]
       if (!agentStatus) {
         return step
@@ -79,7 +85,8 @@ export function ChatWindow() {
         logs: agentStatus.logs || [],
         description: agentStatus.latest_message || step.description,
       }
-    }))
+    })
+    setAgentSteps(updated)
   }
 
   const startPolling = (jobId: string) => {
@@ -103,17 +110,13 @@ export function ChatWindow() {
             timestamp: new Date().toISOString(),
           }
           addMessage(assistantMessage)
-          setShowProgressBubble(false)
-          setLoading(false)
-          setActiveJobId(null)
+          resetJobState()
         }
         if (status.status === 'error') {
           if (pollRef.current) {
             clearInterval(pollRef.current)
           }
-          setShowProgressBubble(false)
-          setLoading(false)
-          setActiveJobId(null)
+          resetJobState()
           const errorMessage = {
             id: (Date.now() + 1).toString(),
             role: 'assistant' as const,
@@ -126,9 +129,7 @@ export function ChatWindow() {
         if (pollRef.current) {
           clearInterval(pollRef.current)
         }
-        setShowProgressBubble(false)
-        setLoading(false)
-        setActiveJobId(null)
+        resetJobState()
         const errorMessage = {
           id: (Date.now() + 1).toString(),
           role: 'assistant' as const,
@@ -151,17 +152,17 @@ export function ChatWindow() {
     addMessage(userMessage)
 
     setLoading(true)
+    // Reset steps to initial state
     setAgentSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'waiting', logs: [] })))
     setShowProgressBubble(true)
 
     try {
       const job = await startCopilotJob(content)
-      setActiveJobId(job.job_id)
+      setActiveJob(job.job_id)
       updateFromStatus(job)
       startPolling(job.job_id)
     } catch (error) {
-      setShowProgressBubble(false)
-      setLoading(false)
+      resetJobState()
       const errorMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant' as const,
@@ -177,39 +178,42 @@ export function ChatWindow() {
   }
 
   const handleClearChat = () => {
-    if (confirm('Are you sure you want to clear the chat history?')) {
-      clearMessages()
+    clearMessages()
+    resetJobState()
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
     }
   }
 
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current)
-      }
-    }
-  }, [])
+  // Convert store steps to component steps with icons
+  const stepsWithIcons = mapStepsWithIcons(agentSteps)
+  const isComplete = agentSteps.every(s => s.status === 'completed' || s.status === 'skipped')
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden">
-      {/* Ambient background - FinIntel Logo */}
-      {!isLoading && messages.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-2 select-none">
-            {/* FinIntel Logo Mark */}
-            <div className="flex h-32 w-32 items-center justify-center rounded-3xl bg-gradient-to-br from-accent-primary/10 to-accent-secondary/5 border border-accent-primary/10">
-              <span className="text-5xl font-bold bg-gradient-to-br from-accent-primary to-accent-secondary bg-clip-text text-transparent">
-                FI
-              </span>
-            </div>
-            <span className="text-xl font-semibold text-text-primary/10">FinIntel</span>
+    <div className="flex h-full flex-col bg-bg-primary">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border-secondary bg-bg-secondary px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-primary/10">
+            <MessageCircle className="h-5 w-5 text-accent-primary" />
+          </div>
+          <div>
+            <h1 className="font-sans text-lg font-semibold text-text-primary">FinIntel Copilot</h1>
+            <p className="font-mono text-xs text-text-tertiary">AI-powered financial assistant</p>
           </div>
         </div>
-      )}
+        <button
+          onClick={handleClearChat}
+          className="rounded-lg border border-border-secondary bg-bg-elevated px-3 py-2 font-mono text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary"
+        >
+          <Trash2 className="mr-1.5 inline-block h-3.5 w-3.5" />
+          Clear chat
+        </button>
+      </div>
 
       {/* Messages Container */}
       <div className="flex-1 overflow-y-auto px-6 py-8">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !showProgressBubble ? (
           /* Empty State - Simplified */
           <div className="flex h-full flex-col items-center justify-center">
             <div className="flex flex-col items-center text-center max-w-lg">
@@ -238,24 +242,20 @@ export function ChatWindow() {
             </div>
           </div>
         ) : (
-          /* Messages */
+          /* Chat Messages */
           <div className="mx-auto max-w-4xl space-y-6">
             {messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                role={message.role}
-                content={message.content}
-                timestamp={message.timestamp}
-                copilotAnswer={message.copilotAnswer}
-              />
+              <MessageBubble key={message.id} {...message} />
             ))}
-
+            
             {/* Inline Progress Bubble */}
             {showProgressBubble && (
-              <AgentProgressBubble steps={agentSteps} isComplete={false} />
+              <AgentProgressBubble 
+                steps={stepsWithIcons}
+                isComplete={isComplete}
+              />
             )}
-
-            {/* Scroll anchor */}
+            
             <div ref={messagesEndRef} />
           </div>
         )}
