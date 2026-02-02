@@ -342,7 +342,8 @@ ENTITIES:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=self.config.TEMPERATURE,
-                max_tokens=self.config.MAX_TOKENS
+                max_tokens=self.config.MAX_TOKENS,
+                extra_body={"reasoning": {"enabled": True}}
             )
 
             content = response.choices[0].message.content

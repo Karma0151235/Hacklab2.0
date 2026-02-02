@@ -2,11 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, Trash2, Bot, FileText, BarChart3, AlertTriangle, Sparkles } from 'lucide-react'
+import { Trash2, Bot, FileText, BarChart3, AlertTriangle, Sparkles, Send } from 'lucide-react'
 import { useCopilotStore, INITIAL_STEPS, AgentStepState } from '@/stores/use-copilot-store'
 import { MessageBubble } from './message-bubble'
-import { ChatInput } from './chat-input'
-import { SuggestedQuestions } from './suggested-questions'
 import { getCopilotResult, getCopilotStatus, startCopilotJob } from '@/lib/api/copilot'
 import { AgentProgressBubble } from './agent-progress-bubble'
 import { AgentStep } from './agent-progress-modal'
@@ -14,11 +12,10 @@ import { CopilotJobStatus } from '@/lib/types/api'
 
 const SUGGESTED_QUESTIONS = [
   'What are the financials of Foodie Media Berhad?',
-  'Show me the detailed analysis of Foodie Media Berhad',
-  'Does Foodie Media Berhad have any recent alerts?',
+  'Show me detailed analysis of Foodie Media Berhad',
+  'Any recent alerts for Foodie Media Berhad?',
 ]
 
-// Map store steps to component steps with icons
 const mapStepsWithIcons = (steps: AgentStepState[]): AgentStep[] => {
   const iconMap: Record<string, typeof Bot> = {
     supervisor: Bot,
@@ -49,36 +46,30 @@ export function ChatWindow() {
   } = useCopilotStore()
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [isInputFocused, setIsInputFocused] = useState(false)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [inputValue, setInputValue] = useState('')
   const pollRef = useRef<NodeJS.Timeout | null>(null)
   const hasResumedRef = useRef(false)
 
-  // Auto-scroll logic
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Resume polling if there's an active job when returning to page
   useEffect(() => {
     if (activeJobId && showProgressBubble && !hasResumedRef.current) {
       hasResumedRef.current = true
       setLoading(true)
       startPolling(activeJobId)
     }
-    
     return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current)
-      }
+      if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [activeJobId, showProgressBubble])
 
   const updateFromStatus = (status: CopilotJobStatus) => {
     const updated = agentSteps.map(step => {
       const agentStatus = status.agents?.[step.id]
-      if (!agentStatus) {
-        return step
-      }
+      if (!agentStatus) return step
       return {
         ...step,
         status: agentStatus.status as AgentStep['status'],
@@ -90,69 +81,59 @@ export function ChatWindow() {
   }
 
   const startPolling = (jobId: string) => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-    }
+    if (pollRef.current) clearInterval(pollRef.current)
     pollRef.current = setInterval(async () => {
       try {
         const status = await getCopilotStatus(jobId)
         updateFromStatus(status)
         if (status.status === 'completed') {
-          if (pollRef.current) {
-            clearInterval(pollRef.current)
-          }
+          if (pollRef.current) clearInterval(pollRef.current)
           const answer = await getCopilotResult(jobId)
-          const assistantMessage = {
+          addMessage({
             id: (Date.now() + 1).toString(),
-            role: 'assistant' as const,
+            role: 'assistant',
             content: answer.answer_text,
             copilotAnswer: answer,
             timestamp: new Date().toISOString(),
-          }
-          addMessage(assistantMessage)
+          })
           resetJobState()
         }
         if (status.status === 'error') {
-          if (pollRef.current) {
-            clearInterval(pollRef.current)
-          }
+          if (pollRef.current) clearInterval(pollRef.current)
           resetJobState()
-          const errorMessage = {
+          addMessage({
             id: (Date.now() + 1).toString(),
-            role: 'assistant' as const,
+            role: 'assistant',
             content: status.error || 'Copilot job failed. Please try again.',
             timestamp: new Date().toISOString(),
-          }
-          addMessage(errorMessage)
+          })
         }
-      } catch (error) {
-        if (pollRef.current) {
-          clearInterval(pollRef.current)
-        }
+      } catch {
+        if (pollRef.current) clearInterval(pollRef.current)
         resetJobState()
-        const errorMessage = {
+        addMessage({
           id: (Date.now() + 1).toString(),
-          role: 'assistant' as const,
-          content: 'I ran into an error retrieving live progress. Please try again.',
+          role: 'assistant',
+          content: 'Error retrieving progress. Please try again.',
           timestamp: new Date().toISOString(),
-        }
-        addMessage(errorMessage)
+        })
       }
     }, 1000)
   }
 
-  const handleSendMessage = async (content: string) => {
-    // Add user message
-    const userMessage = {
+  const handleSend = async () => {
+    const content = inputValue.trim()
+    if (!content || isLoading) return
+    
+    setInputValue('')
+    addMessage({
       id: Date.now().toString(),
-      role: 'user' as const,
+      role: 'user',
       content,
       timestamp: new Date().toISOString(),
-    }
-    addMessage(userMessage)
+    })
 
     setLoading(true)
-    // Reset steps to initial state
     setAgentSteps(INITIAL_STEPS.map(s => ({ ...s, status: 'waiting', logs: [] })))
     setShowProgressBubble(true)
 
@@ -161,134 +142,112 @@ export function ChatWindow() {
       setActiveJob(job.job_id)
       updateFromStatus(job)
       startPolling(job.job_id)
-    } catch (error) {
+    } catch {
       resetJobState()
-      const errorMessage = {
+      addMessage({
         id: (Date.now() + 1).toString(),
-        role: 'assistant' as const,
-        content: 'I apologize, but I encountered an error starting the copilot job. Please try again.',
+        role: 'assistant',
+        content: 'Failed to start. Please try again.',
         timestamp: new Date().toISOString(),
-      }
-      addMessage(errorMessage)
+      })
     }
   }
 
-  const handleQuestionClick = (question: string) => {
-    handleSendMessage(question)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
   }
 
-  const handleClearChat = () => {
+  const handleClear = () => {
     clearMessages()
     resetJobState()
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-    }
+    if (pollRef.current) clearInterval(pollRef.current)
   }
 
-  // Convert store steps to component steps with icons
   const stepsWithIcons = mapStepsWithIcons(agentSteps)
   const isComplete = agentSteps.every(s => s.status === 'completed' || s.status === 'skipped')
+  const hasMessages = messages.length > 0 || showProgressBubble
 
   return (
-    <div className="flex h-full flex-col bg-bg-primary">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border-secondary bg-bg-secondary px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent-primary/10">
-            <MessageCircle className="h-5 w-5 text-accent-primary" />
-          </div>
-          <div>
-            <h1 className="font-sans text-lg font-semibold text-text-primary">FinIntel Copilot</h1>
-            <p className="font-mono text-xs text-text-tertiary">AI-powered financial assistant</p>
-          </div>
-        </div>
-        <button
-          onClick={handleClearChat}
-          className="rounded-lg border border-border-secondary bg-bg-elevated px-3 py-2 font-mono text-xs text-text-secondary transition-colors hover:bg-bg-tertiary hover:text-text-primary"
-        >
-          <Trash2 className="mr-1.5 inline-block h-3.5 w-3.5" />
-          Clear chat
-        </button>
-      </div>
-
-      {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto px-6 py-8">
-        {messages.length === 0 && !showProgressBubble ? (
-          /* Empty State - Simplified */
-          <div className="flex h-full flex-col items-center justify-center">
-            <div className="flex flex-col items-center text-center max-w-lg">
-              {/* Logo */}
-              <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-accent-primary/15 to-accent-secondary/10 border border-accent-primary/20 mb-8">
-                <Sparkles className="h-8 w-8 text-accent-primary" />
+    <div className="flex h-full flex-col">
+      {/* Chat Area */}
+      <div className="flex-1 overflow-y-auto">
+        {!hasMessages ? (
+          // Empty State - Centered
+          <div className="flex h-full items-center justify-center p-4">
+            <div className="max-w-md text-center">
+              <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20">
+                <Sparkles className="h-6 w-6 text-cyan-400" />
               </div>
-              
-              {/* Title */}
-              <h1 className="text-2xl font-bold text-text-primary mb-2">
-                FinIntel Copilot
-              </h1>
-              
-              {/* Description */}
-              <p className="text-sm text-text-tertiary mb-12">
-                Your intelligent financial assistant. Ask about companies, filings, alerts, and market insights.
+              <h1 className="mb-2 text-xl font-semibold text-white">FinIntel Copilot</h1>
+              <p className="mb-8 text-sm text-gray-400">
+                Ask about companies, filings, or financial insights
               </p>
-
-              {/* Suggested Questions */}
-              <div className="w-full">
-                <SuggestedQuestions
-                  questions={SUGGESTED_QUESTIONS}
-                  onQuestionClick={handleQuestionClick}
-                />
+              <div className="space-y-2">
+                {SUGGESTED_QUESTIONS.map((q, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setInputValue(q); inputRef.current?.focus() }}
+                    className="block w-full rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2.5 text-left text-sm text-gray-300 transition-colors hover:border-cyan-500/50 hover:bg-gray-800"
+                  >
+                    {q}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
         ) : (
-          /* Chat Messages */
-          <div className="mx-auto max-w-4xl space-y-6">
-            {messages.map((message) => (
-              <MessageBubble key={message.id} {...message} />
+          // Messages
+          <div className="mx-auto max-w-3xl space-y-4 p-4">
+            {messages.map((msg) => (
+              <MessageBubble key={msg.id} {...msg} />
             ))}
-            
-            {/* Inline Progress Bubble */}
             {showProgressBubble && (
-              <AgentProgressBubble 
-                steps={stepsWithIcons}
-                isComplete={isComplete}
-              />
+              <AgentProgressBubble steps={stepsWithIcons} isComplete={isComplete} />
             )}
-            
             <div ref={messagesEndRef} />
           </div>
         )}
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-border-secondary bg-bg-secondary px-6 py-4">
-        <div className="mx-auto max-w-4xl space-y-3">
-          {/* Floating Suggested Questions - Show on focus */}
-          <AnimatePresence>
-            {isInputFocused && messages.length > 0 && !isLoading && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
+      <div className="border-t border-gray-800 bg-gray-900/50 p-3">
+        <div className="mx-auto max-w-3xl">
+          <div className="flex items-end gap-2 rounded-xl border border-gray-700 bg-gray-800/80 p-2">
+            <textarea
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about financials, filings, alerts..."
+              rows={1}
+              className="flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-white placeholder-gray-500 outline-none"
+              style={{ minHeight: '36px', maxHeight: '120px' }}
+            />
+            <div className="flex items-center gap-1">
+              {messages.length > 0 && (
+                <button
+                  onClick={handleClear}
+                  className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-300"
+                  title="Clear chat"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                onClick={handleSend}
+                disabled={!inputValue.trim() || isLoading}
+                className="rounded-lg bg-cyan-600 p-2 text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                <SuggestedQuestions
-                  questions={SUGGESTED_QUESTIONS.filter(
-                    (q) => !messages.some((m) => m.content === q)
-                  ).slice(0, 3)}
-                  onQuestionClick={handleQuestionClick}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Chat Input */}
-          <ChatInput 
-            onSend={handleSendMessage} 
-            isLoading={isLoading} 
-            onFocusChange={setIsInputFocused}
-          />
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <p className="mt-2 text-center text-[10px] text-gray-600">
+            FinIntel may produce inaccurate information
+          </p>
         </div>
       </div>
     </div>

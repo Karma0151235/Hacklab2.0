@@ -400,7 +400,8 @@ Use Alert Agent for queries about:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0,
-                max_tokens=500
+                max_tokens=500,
+                extra_body={"reasoning": {"enabled": True}}
             )
 
             content = response.choices[0].message.content
@@ -481,7 +482,8 @@ Be clear, concise, and specific. Include numbers and citations."""
                     {"role": "user", "content": prompt}
                 ],
                 temperature=self.config.TEMPERATURE,
-                max_tokens=self.config.MAX_TOKENS
+                max_tokens=self.config.MAX_TOKENS,
+                extra_body={"reasoning": {"enabled": True}}
             )
 
             answer = response.choices[0].message.content

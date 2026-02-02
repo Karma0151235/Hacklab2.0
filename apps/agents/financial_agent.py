@@ -168,7 +168,8 @@ Include the currency if mentioned."""
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0,  # Deterministic for data extraction
-                max_tokens=2000
+                max_tokens=2000,
+                extra_body={"reasoning": {"enabled": True}}
             )
 
             content = response.choices[0].message.content
@@ -312,7 +313,8 @@ Be specific and reference exact figures."""
                     {"role": "user", "content": prompt}
                 ],
                 temperature=self.config.TEMPERATURE,
-                max_tokens=2000
+                max_tokens=2000,
+                extra_body={"reasoning": {"enabled": True}}
             )
 
             analysis = response.choices[0].message.content

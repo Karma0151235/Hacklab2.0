@@ -290,7 +290,8 @@ Format response as JSON:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0,
-                max_tokens=500
+                max_tokens=500,
+                extra_body={"reasoning": {"enabled": True}}
             )
 
             content = response.choices[0].message.content
