@@ -5,7 +5,7 @@ FastAPI main application
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import pdf_ingestion, bursa_scraping, vectordb, copilot, filings, companies
+from api.routes import pdf_ingestion, bursa_scraping, vectordb, copilot, filings, companies, news
 from agents.config import AgentConfig
 
 app = FastAPI(
@@ -49,6 +49,7 @@ app.include_router(vectordb.router, prefix="/api/v1", tags=["Vector Database"])
 app.include_router(copilot.router, prefix="/api/v1", tags=["Copilot"])
 app.include_router(filings.router, prefix="/api/v1", tags=["Filings"])
 app.include_router(companies.router, prefix="/api/v1", tags=["Companies"])
+app.include_router(news.router, prefix="/api/v1", tags=["News"])
 
 @app.get("/")
 async def root():

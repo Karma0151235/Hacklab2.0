@@ -4,7 +4,7 @@ Agents for Market Intelligence Hackathon MVP
 
 from typing import Any
 
-__all__ = ["SupervisorAgent", "RAGAgent", "FinancialAgent", "AlertAgent"]
+__all__ = ["SupervisorAgent", "RAGAgent", "FinancialAgent", "AlertAgent", "SentimentAgent"]
 
 
 def __getattr__(name: str) -> Any:
@@ -23,4 +23,8 @@ def __getattr__(name: str) -> Any:
     if name == "AlertAgent":
         from .alert_agent import AlertAgent
         return AlertAgent
+    if name == "SentimentAgent":
+        from .sentiment_agent import SentimentAgent
+        return SentimentAgent
     raise AttributeError(f"module 'agents' has no attribute '{name}'")
+

@@ -24,6 +24,7 @@ from agents.config import AgentConfig
 from agents.rag_agent import RAGAgent
 from agents.financial_agent import FinancialAgent
 from agents.alert_agent import AlertAgent
+from agents.sentiment_agent import SentimentAgent, SentimentAgentInput
 from etl.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -78,6 +79,7 @@ Always:
         self.rag_agent = RAGAgent()
         self.financial_agent = FinancialAgent()
         self.alert_agent = AlertAgent()
+        self.sentiment_agent = SentimentAgent()
 
         # Initialize OpenRouter client
         self.client = openai.OpenAI(
@@ -374,12 +376,14 @@ Available agents:
 1. RAG Agent - retrieves context from PDF documents (always needed)
 2. Financial Agent - calculates financial metrics (ratios, growth, profitability)
 3. Alert Agent - evaluates alerts based on thresholds and keywords
+4. Sentiment Agent - analyzes news sentiment and market mood
 
 Respond with JSON indicating which agents to use:
 {{
   "use_rag": true,
   "use_financial": true/false,
   "use_alert": true/false,
+  "use_sentiment": true/false,
   "reasoning": "brief explanation"
 }}
 
@@ -391,7 +395,12 @@ Use Financial Agent for queries about:
 Use Alert Agent for queries about:
 - Risks, concerns, warnings
 - Threshold breaches
-- Adverse conditions"""
+- Adverse conditions
+
+Use Sentiment Agent for queries about:
+- News sentiment, market sentiment
+- Media coverage, press, headlines
+- Public perception, investor sentiment"""
 
             response = self.client.chat.completions.create(
                 model=self.config.GLM_4_5_MODEL,
@@ -420,11 +429,12 @@ Use Alert Agent for queries about:
                 return plan
             except:
                 # Default: use all agents
-                return {"use_rag": True, "use_financial": True, "use_alert": True}
+                return {"use_rag": True, "use_financial": True, "use_alert": True, "use_sentiment": False}
 
         except Exception as e:
             logger.warning(f"Error planning agent execution: {str(e)}")
-            return {"use_rag": True, "use_financial": True, "use_alert": True}
+            return {"use_rag": True, "use_financial": True, "use_alert": True, "use_sentiment": False}
+
 
     def _synthesize_response(
         self,
