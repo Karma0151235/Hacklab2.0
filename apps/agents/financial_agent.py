@@ -38,50 +38,62 @@ class FinancialAgent:
     6. Determine routing (complete/partial/skip)
     """
 
-    SYSTEM_PROMPT = """You are the Financial Data Extraction Agent.
+    SYSTEM_PROMPT = """You are extracting financial data from Malaysian Bursa company announcements.
 
-Your role:
-1. Extract specific financial figures from the provided context
-2. Extract ONLY values that are explicitly stated in the text
-3. NEVER estimate or infer financial figures
-4. Identify the currency (RM, USD, etc.)
-5. Extract dates/periods when available
-6. Flag any inconsistencies in the data
+PRIORITY EXTRACTION (look for these first - almost always present):
+- Revenue / Operating Revenue (in RM millions)
+- Profit for the period / Net Income / Profit after tax
+- Earnings Per Share (EPS)
+- Total Assets, Total Equity, Total Liabilities
+- Current Assets, Current Liabilities (if available)
 
-Return a JSON object with:
+SECONDARY DATA (extract if clearly stated):
+- Gross Profit
+- Operating Profit / Operating Income
+- Interest Expense
+- Shares Outstanding
+- Inventory (if applicable)
+- Accounts Receivable (if applicable)
+
+COMPARATIVE DATA (extract if this is a comparative period):
+- Previous period revenue
+- Previous period net income
+- Previous period EPS
+
+Return ONLY this JSON structure with explicitly stated values:
 {
   "extracted_values": {
     "revenue": number or null,
-    "net_profit": number or null,
     "net_income": number or null,
-    "gross_profit": number or null,
-    "operating_income": number or null,
-    "operating_profit": number or null,
-    "cost_of_goods_sold": number or null,
-    "current_assets": number or null,
+    "earnings_per_share": number or null,
     "total_assets": number or null,
+    "equity": number or null,
+    "current_assets": number or null,
     "current_liabilities": number or null,
     "total_debt": number or null,
-    "equity": number or null,
-    "inventory": number or null,
-    "accounts_receivable": number or null,
+    "gross_profit": number or null,
+    "operating_profit": number or null,
     "interest_expense": number or null,
     "shares_outstanding": number or null,
+    "inventory": number or null,
+    "accounts_receivable": number or null,
     "previous_revenue": number or null,
     "previous_net_income": number or null,
     "previous_eps": number or null
   },
-  "period": "string (e.g. 'Q1 2025', 'FY2024')",
-  "currency": "string (e.g. 'RM', 'USD')",
+  "period": "string (e.g., 'Q1 2025', 'FY2024')",
+  "currency": "RM",
   "confidence": number (0.0-1.0),
   "data_quality_issues": ["string", ...]
 }
 
-Important:
-- If a value is not explicitly stated, return null (NOT zero)
-- If you are uncertain about a value, mark confidence lower and note the issue
-- Only include extracted_values that have explicit support in the text
-- List any ambiguities or inconsistencies in data_quality_issues"""
+CRITICAL RULES:
+- ONLY extract values explicitly shown in the document
+- NEVER estimate, calculate, or infer values
+- If uncertain about a value, return null
+- Currency is assumed RM unless explicitly stated otherwise
+- Mark low confidence if data is ambiguous or incomplete
+- List all data quality concerns (missing periods, unit inconsistencies, etc.)"""
 
     def __init__(self):
         """Initialize Financial Agent with OpenRouter client and calculator"""
@@ -171,12 +183,38 @@ Important:
                     extraction_errors=["No RAG context provided"]
                 )
 
-            # Build extraction prompt
-            context_text = rag_output.get('summary', '') if isinstance(rag_output, dict) else rag_output.summary
+            # Build extraction prompt with both text summary and tables
+            if isinstance(rag_output, dict):
+                context_text = rag_output.get('summary', '')
+                table_chunks = rag_output.get('table_chunks', [])
+            else:
+                context_text = rag_output.summary
+                table_chunks = rag_output.table_chunks or []
 
-            extraction_prompt = f"""Extract financial figures from the following text:
+            # Format tables for extraction
+            table_text = ""
+            if table_chunks:
+                table_text = "\n\n=== FINANCIAL TABLES ===\n"
+                for i, table in enumerate(table_chunks):
+                    if isinstance(table, dict):
+                        table_data = table.get('table_data', [])
+                    else:
+                        table_data = table.table_data if hasattr(table, 'table_data') else []
 
+                    if table_data:
+                        table_text += f"\nTable {i+1}:\n"
+                        for row in table_data:
+                            if isinstance(row, list):
+                                table_text += " | ".join(str(cell) for cell in row) + "\n"
+                            else:
+                                table_text += str(row) + "\n"
+
+            extraction_prompt = f"""Extract financial figures from the following content:
+
+NARRATIVE TEXT:
 {context_text}
+
+{table_text}
 
 Return valid JSON only, no explanations."""
 
@@ -327,24 +365,56 @@ Return valid JSON only, no explanations."""
 
     def route(self, output: FinancialAgentOutput) -> FinancialAgentRouting:
         """
-        Route financial analysis results based on completeness.
+        Route financial analysis results based on metric QUALITY, not just count.
+
+        Weights critical metrics (liquidity, leverage, profitability) higher than optional ones.
 
         Determines:
         - Status: complete, partial, skip
         - Whether to proceed with Alert Agent
         - Recommended next step
         """
-        # Count calculated metrics
         metrics_dict = output.metrics.dict()
         calculated_metrics = [k for k, v in metrics_dict.items() if v is not None]
         metrics_count = len(calculated_metrics)
 
-        # Determine status
-        if metrics_count >= 8:
+        # Weight metrics by importance for financial health assessment
+        critical_metrics = {
+            'net_profit_margin': metrics_dict.get('net_profit_margin'),
+            'current_ratio': metrics_dict.get('current_ratio'),
+            'debt_to_equity': metrics_dict.get('debt_to_equity'),
+        }
+
+        growth_metrics = {
+            'revenue_growth_yoy': metrics_dict.get('revenue_growth_yoy'),
+            'eps_growth': metrics_dict.get('eps_growth'),
+        }
+
+        profitability_metrics = {
+            'gross_profit_margin': metrics_dict.get('gross_profit_margin'),
+            'operating_profit_margin': metrics_dict.get('operating_profit_margin'),
+            'return_on_assets': metrics_dict.get('return_on_assets'),
+            'return_on_equity': metrics_dict.get('return_on_equity'),
+        }
+
+        # Score calculation
+        critical_count = sum(1 for v in critical_metrics.values() if v is not None)
+        growth_count = sum(1 for v in growth_metrics.values() if v is not None)
+        profitability_count = sum(1 for v in profitability_metrics.values() if v is not None)
+
+        # Weighted score: critical=60%, profitability=30%, growth=10%
+        critical_score = (critical_count / len(critical_metrics)) * 0.6 if critical_metrics else 0
+        profitability_score = (profitability_count / len(profitability_metrics)) * 0.3 if profitability_metrics else 0
+        growth_score = (growth_count / len(growth_metrics)) * 0.1 if growth_metrics else 0
+
+        overall_score = critical_score + profitability_score + growth_score
+
+        # Determine status based on weighted score
+        if overall_score >= 0.75:  # At least 2 critical + some additional
             status = "complete"
             should_continue = True
             recommendation = "analyze_fully"
-        elif metrics_count >= 3:
+        elif overall_score >= 0.4 or critical_count >= 1:  # At least 1 critical metric
             status = "partial"
             should_continue = True
             recommendation = "partial_analysis"
@@ -359,7 +429,7 @@ Return valid JSON only, no explanations."""
 
         return FinancialAgentRouting(
             status=status,
-            reason=f"Calculated {metrics_count} out of {len(metrics_dict)} available metrics",
+            reason=f"Calculated {metrics_count} metrics (critical: {critical_count}/3, profitability: {profitability_count}/4, growth: {growth_count}/2) - Score: {overall_score:.2f}",
             should_continue_pipeline=should_continue,
             metrics_available=metrics_count,
             metrics_calculated=metrics_calculated,

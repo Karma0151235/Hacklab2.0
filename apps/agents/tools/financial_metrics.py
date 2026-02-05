@@ -722,6 +722,44 @@ class FinancialMetricsCalculator:
             if result.value is not None:
                 metrics_dict['asset_turnover'] = result.value
 
+        # Profitability Margin Metrics
+        if all(k in financial_data for k in ['gross_profit', 'revenue']):
+            result = FinancialMetricsCalculator.gross_profit_margin(
+                financial_data['gross_profit'],
+                financial_data['revenue']
+            )
+            results['gross_profit_margin'] = result
+            if result.value is not None:
+                metrics_dict['gross_profit_margin'] = result.value
+
+        if all(k in financial_data for k in ['operating_profit', 'revenue']):
+            result = FinancialMetricsCalculator.operating_profit_margin(
+                financial_data['operating_profit'],
+                financial_data['revenue']
+            )
+            results['operating_profit_margin'] = result
+            if result.value is not None:
+                metrics_dict['operating_profit_margin'] = result.value
+
+        # Growth Indicators
+        if all(k in financial_data for k in ['revenue', 'previous_revenue']):
+            result = FinancialMetricsCalculator.revenue_growth_yoy(
+                financial_data['revenue'],
+                financial_data['previous_revenue']
+            )
+            results['revenue_growth_yoy'] = result
+            if result.value is not None:
+                metrics_dict['revenue_growth_yoy'] = result.value
+
+        if all(k in financial_data for k in ['earnings_per_share', 'previous_eps']):
+            result = FinancialMetricsCalculator.eps_growth(
+                financial_data['earnings_per_share'],
+                financial_data['previous_eps']
+            )
+            results['eps_growth'] = result
+            if result.value is not None:
+                metrics_dict['eps_growth'] = result.value
+
         # Convert to FinancialMetrics schema
         metrics = FinancialMetrics(**metrics_dict)
 
