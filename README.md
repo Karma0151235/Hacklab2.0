@@ -785,7 +785,7 @@ sequenceDiagram
   participant SUP as Supervisor
   participant RAG as RAG Agent
   participant FIN as Financial Agent
-  participant ALT as Alert Agent
+  participant ALR as Alert Agent
   participant SEN as Sentiment Agent
   participant MV as Milvus
   participant PG as PostgreSQL
@@ -800,8 +800,8 @@ sequenceDiagram
   SUP->>FIN: analyze(context) (if needed)
   FIN-->>SUP: metrics + analysis
 
-  SUP->>ALT: evaluate(context) (if needed)
-  ALT-->>SUP: alerts
+  SUP->>ALR: evaluate(context) (if needed)
+  ALR-->>SUP: alerts
 
   SUP->>SEN: analyze(news) (if needed)
   SEN-->>SUP: sentiment summary
