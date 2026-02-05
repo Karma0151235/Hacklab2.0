@@ -4,9 +4,10 @@ import { Bot, User, Copy, Check, FileText, ChevronDown, ChevronUp } from 'lucide
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
-import { CopilotAnswer } from '@/lib/types/api'
+import { CopilotAnswer, SentimentOutput } from '@/lib/types/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { SentimentCard } from './sentiment-card'
 
 // Play pop sound
 const playPopSound = () => {
@@ -107,6 +108,13 @@ export function MessageBubble({
             </div>
           )}
         </div>
+
+        {/* Sentiment Card - assistant only */}
+        {!isUser && copilotAnswer?.sentiment && (
+          <div className="mt-3">
+            <SentimentCard sentiment={copilotAnswer.sentiment} />
+          </div>
+        )}
 
         {/* Copy button - assistant only */}
         {!isUser && (

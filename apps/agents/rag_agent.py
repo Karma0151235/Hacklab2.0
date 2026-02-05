@@ -118,6 +118,21 @@ If information is insufficient, clearly state this."""
             # Retrieve table chunks
             table_results = self._search_table_chunks(query_embedding, query.top_k_table)
 
+            # Optional filter by company to avoid unrelated citations
+            if query.company_name:
+                text_results = self._filter_results_by_company(text_results, query.company_name)
+                table_results = self._filter_results_by_company(table_results, query.company_name)
+
+            if not text_results and not table_results:
+                company_note = f" for {query.company_name}" if query.company_name else ""
+                return RAGOutput(
+                    summary=f"No relevant documents found{company_note}.",
+                    table_chunks=[],
+                    text_chunks=[],
+                    entities=[],
+                    metadata=[]
+                )
+
             # Combine context
             context = self._build_context(text_results, table_results)
 
@@ -249,6 +264,29 @@ If information is insufficient, clearly state this."""
             context_parts.append("")
 
         return "\n".join(context_parts)
+
+    def _filter_results_by_company(self, results: List[Dict[str, Any]], company_name: str) -> List[Dict[str, Any]]:
+        """Filter retrieval results by company name or code"""
+        normalized = (company_name or "").strip().lower()
+        if not normalized:
+            return results
+
+        def matches(value: Any) -> bool:
+            if not value:
+                return False
+            candidate = str(value).lower()
+            return normalized in candidate or candidate in normalized
+
+        filtered = []
+        for result in results:
+            if matches(result.get("company_name")) or matches(result.get("filename")):
+                filtered.append(result)
+
+        if not filtered:
+            logger.info(
+                f"RAG filter: no results matched company '{company_name}', returning empty set"
+            )
+        return filtered
 
     def _table_to_text(self, table_data: List[List[str]]) -> str:
         """Convert table data to readable text"""

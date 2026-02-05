@@ -19,6 +19,7 @@ class RAGQuery(BaseModel):
     query: str = Field(..., description="User query for semantic search")
     top_k_text: int = Field(default=2, description="Number of text chunks to retrieve")
     top_k_table: int = Field(default=1, description="Number of table chunks to retrieve")
+    company_name: Optional[str] = Field(default=None, description="Company name filter for retrieval")
 
 
 class ChunkMetadata(BaseModel):

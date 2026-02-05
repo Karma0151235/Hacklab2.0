@@ -162,7 +162,8 @@ Always:
             rag_output = self.rag_agent.retrieve(RAGQuery(
                 query=input_data.query,
                 top_k_text=self.config.TOP_K_TEXT,
-                top_k_table=self.config.TOP_K_TABLE
+                top_k_table=self.config.TOP_K_TABLE,
+                company_name=agent_plan.get("company_name")
             ))
             rag_duration = perf_counter() - rag_start
             agents_used.append("RAG")
@@ -429,6 +430,18 @@ Always:
             # Step 8: Calculate confidence
             confidence = self._calculate_confidence(rag_output, financial_output, alert_output, sentiment_output)
 
+            sentiment_confidence = None
+            if sentiment_output and sentiment_output.confidence > 0:
+                sentiment_confidence = sentiment_output.confidence
+
+            answer_parts = [answer.strip()]
+            answer_parts.append("")
+            answer_parts.append("Confidence")
+            answer_parts.append(f"Overall: {confidence:.0%}")
+            if sentiment_confidence is not None:
+                answer_parts.append(f"Sentiment: {sentiment_confidence:.0%}")
+            answer = "\n".join(answer_parts)
+
             output = SupervisorOutput(
                 answer=answer,
                 agents_used=agents_used,
@@ -610,8 +623,6 @@ Extract the company name if mentioned (e.g., "MAYBANK", "Maybank Group", etc.)."
                 context_parts.append(f"Confidence: {sentiment_output.confidence:.1%}")
                 if sentiment_output.summary:
                     context_parts.append(f"\nSummary: {sentiment_output.summary}")
-                if sentiment_output.key_topics:
-                    context_parts.append(f"\nKey Topics: {', '.join(sentiment_output.key_topics)}")
                 if sentiment_output.articles_analyzed > 0:
                     context_parts.append(f"Articles Analyzed: {sentiment_output.articles_analyzed}")
 
@@ -631,6 +642,8 @@ Generate a response that:
 3. References sources (filename, company)
 4. Highlights key findings and alerts
 5. Provides concise reasoning and actionable intelligence
+
+Do not include Key Topics or Key Phrases sections. Do not include confidence statements; a standardized confidence block will be appended separately.
 
 Be clear, concise, and specific. Include numbers and citations."""
 
@@ -837,10 +850,11 @@ Be clear, concise, and specific. Include numbers and citations."""
                 response_parts.append(f"- Overall: {sentiment_output.overall_sentiment.upper()} (score: {sentiment_output.sentiment_score:.2f})")
                 if sentiment_output.summary:
                     response_parts.append(f"- Summary: {sentiment_output.summary}")
-                if sentiment_output.key_topics:
-                    response_parts.append(f"- Key topics: {', '.join(sentiment_output.key_topics)}")
 
-            response_parts.append(f"\nConfidence: {rag_quality['confidence']:.0%}")
+            response_parts.append("\nConfidence")
+            response_parts.append(f"Overall: {rag_quality['confidence']:.0%}")
+            if sentiment_output and sentiment_output.confidence > 0:
+                response_parts.append(f"Sentiment: {sentiment_output.confidence:.0%}")
 
             if rag_output.entities:
                 response_parts.append(f"Mentioned entities: {', '.join(rag_output.entities)}")

@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import { Bot, FileText, BarChart3, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { Bot, FileText, BarChart3, AlertTriangle, TrendingUp, CheckCircle2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface AgentWorkflowProps {
@@ -35,6 +35,15 @@ export function AgentWorkflow({ usedAgents }: AgentWorkflowProps) {
       bgColor: 'bg-amber-400/10',
       borderColor: 'border-amber-400/20',
     },
+    {
+      id: 'sentiment',
+      name: 'Sentiment Agent',
+      icon: TrendingUp,
+      description: 'Market Sentiment',
+      color: 'text-purple-400',
+      bgColor: 'bg-purple-400/10',
+      borderColor: 'border-purple-400/20',
+    },
   ]
 
   // Filter agents to only those that were used
@@ -65,12 +74,12 @@ export function AgentWorkflow({ usedAgents }: AgentWorkflowProps) {
         </div>
 
         {/* Connection Lines (SVG) */}
-        <div className="absolute top-12 h-8 w-full max-w-md">
+        <div className="absolute top-12 h-8 w-full">
           <svg className="h-full w-full overflow-visible">
             {agents.map((agent, index) => {
-              // Calculate rough positions - simplistic for now
-              // 0: left, 1: center, 2: right
-              const x2 = index === 0 ? '15%' : index === 1 ? '50%' : '85%'
+              // Calculate positions for 4 agents
+              // 0: 12.5%, 1: 37.5%, 2: 62.5%, 3: 87.5%
+              const x2 = `${12.5 + (index * 25)}%`
               return (
                 <path
                   key={agent.id}
@@ -80,8 +89,8 @@ export function AgentWorkflow({ usedAgents }: AgentWorkflowProps) {
                   strokeWidth="2"
                   className={cn(
                     'transition-all duration-1000',
-                    usedAgents.includes(agent.id) 
-                      ? 'text-accent-primary opacity-50' 
+                    usedAgents.includes(agent.id)
+                      ? 'text-accent-primary opacity-50'
                       : 'text-border-secondary opacity-20'
                   )}
                   strokeDasharray={usedAgents.includes(agent.id) ? "none" : "4 4"}
@@ -92,7 +101,7 @@ export function AgentWorkflow({ usedAgents }: AgentWorkflowProps) {
         </div>
 
         {/* Sub-Agents Row */}
-        <div className="grid w-full grid-cols-3 gap-4">
+        <div className="grid w-full grid-cols-4 gap-4">
           {agents.map((agent) => {
             const isUsed = usedAgents.includes(agent.id)
             return (

@@ -45,6 +45,19 @@ export interface Citation {
   excerpt: string
 }
 
+export interface SentimentOutput {
+  overall_sentiment: 'positive' | 'neutral' | 'negative'
+  sentiment_score: number // -1.0 to 1.0
+  confidence: number // 0.0 to 1.0
+  summary: string
+  key_topics: string[]
+  key_phrases: string[]
+  trend: 'improving' | 'stable' | 'declining'
+  trend_explanation: string
+  articles_analyzed: number
+  analyzed_at: string
+}
+
 export interface CopilotAnswer {
   answer_text: string
   citations: Citation[]
@@ -52,6 +65,7 @@ export interface CopilotAnswer {
   alerts?: Alert[]
   confidence: number
   source_agents: string[] // ["rag", "sql", "financial"]
+  sentiment?: SentimentOutput // NEW: Optional sentiment analysis results
 }
 
 export interface CopilotAgentStatus {

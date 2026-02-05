@@ -101,13 +101,29 @@ def get_articles_by_company(company: str, limit: int = 10) -> List[dict]:
     client = get_supabase_client()
     if not client:
         return []
-    
-    result = client.from_("news_articles")\
-        .select("*")\
-        .contains("companies_mentioned", [company])\
-        .order("published_date", desc=True)\
-        .limit(limit)\
+
+    normalized = company.strip()
+    if not normalized:
+        return []
+
+    normalized_upper = normalized.upper()
+    like_pattern = f"*{normalized}*"
+
+    or_filter = (
+        f"companies_mentioned.cs.{{{normalized}}},"
+        f"companies_mentioned.cs.{{{normalized_upper}}},"
+        f"content.ilike.{like_pattern},"
+        f"title.ilike.{like_pattern}"
+    )
+
+    result = (
+        client.from_("news_articles")
+        .select("*")
+        .or_(or_filter)
+        .order("published_date", desc=True)
+        .limit(limit)
         .execute()
+    )
     
     return result.data if result.data else []
 
