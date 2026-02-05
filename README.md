@@ -8,7 +8,7 @@ A comprehensive qualitative market intelligence surveillance system designed for
 
 ## System Overview
 
-This platform automates the discovery, extraction, processing, and analysis of market intelligence data from multiple sources, transforming unstructured announcements and financial documents into actionable insights through a sophisticated multi-agent reasoning layer.
+This platform automates the discovery, extraction, processing, and analysis of market intelligence data from multiple sources, transforming unstructured announcements, filings, and news into actionable insights through a multi-agent reasoning layer.
 
 **Core Value Propositions:**
 
@@ -21,36 +21,16 @@ This platform automates the discovery, extraction, processing, and analysis of m
 
 ## Architecture Layers
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    User Interface Layer                 │
-│         (Dashboard, Copilot, Real-time Alerts)          │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│                    API Layer                            │
-│         (FastAPI REST Endpoints, WebSocket)             │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│            Intelligence Layer (Agents)                  │
-│  Supervisor → RAG | Financial | Alert | Web Scraper    │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│              Data Storage & Retrieval                   │
-│  PostgreSQL | Vector DB (Milvus) | Redis Cache         │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│           Data Processing (ETL Pipeline)                │
-│   Parsing | OCR | Chunking | Embedding | Normalization │
-└────────────────────┬────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────┐
-│            Data Acquisition Layer                       │
-│    Web Scraping (Playwright) | Document Upload         │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  UI["User Interface Layer<br/>Dashboard, Copilot, Real-time Alerts"]
+  API["API Layer<br/>FastAPI REST Endpoints, WebSocket"]
+  AGENTS["Intelligence Layer<br/>Supervisor, RAG, Financial, Alert, Sentiment"]
+  DATA["Data Storage & Retrieval<br/>PostgreSQL, Milvus, Redis"]
+  ETL["Data Processing (ETL)<br/>Parsing, OCR, Chunking, Embedding, Normalization"]
+  ACQ["Data Acquisition<br/>Playwright Scraping, Document Upload"]
+
+  UI --> API --> AGENTS --> DATA --> ETL --> ACQ
 ```
 
 ---
@@ -309,49 +289,29 @@ milvus.insert_text_chunks(
 
 ## 3. Multi-Agent Intelligence Layer
 
-The intelligence layer employs a sophisticated multi-agent orchestration system where a Supervisor agent routes queries to specialized agents for retrieval, analysis, financial reasoning, and risk evaluation.
+The intelligence layer employs a sophisticated multi-agent orchestration system where a Supervisor agent routes queries to specialized agents for retrieval, analysis, financial reasoning, risk evaluation, and market sentiment.
 
 ### 3.1 Agent Architecture
 
-```
-\User Query
-    ↓
-[SUPERVISOR AGENT] ◄─────────────────────┐
-├─ Parse query intent                    │
-├─ Decide agent routing                  │
-├─ Orchestrate parallel execution        │
-├─ Aggregate results                     │
-└─ Format evidence-backed response       │
-    ↓ ↓ ↓ ↓
-    ├─→ [RAG AGENT]         ← retrieve semantic matches
-    │      ├─ Query Milvus (k=2 text, k=1 table)
-    │      ├─ Rank by relevance
-    │      └─ Return: chunks + confidence
-    │
-    ├─→ [FINANCIAL AGENT]   ← analyze financial metrics
-    │      ├─ Extract numbers from context
-    │      ├─ Calculate ratios & trends
-    │      └─ Return: analysis + supporting data
-    │
-    ├─→ [ALERT AGENT]       ← evaluate risk signals
-    │      ├─ Check alert rules
-    │      ├─ Score anomalies
-    │      └─ Return: active alerts + severity
+```mermaid
+flowchart TB
+  U["User Query"] --> S["Supervisor Agent<br/>Intent, Routing, Orchestration"]
 
-    ↓ ↓ ↓ ↓
-    [EVIDENCE AGGREGATION]
-    ├─ Merge retrieved chunks
-    ├─ Consolidate metrics
-    ├─ Combine alerts
-    └─ Add citations
+  S --> RAG["RAG Agent<br/>Milvus retrieval (text/table)"]
+  S --> FIN["Financial Agent<br/>Ratios and trend analysis"]
+  S --> ALERT["Alert Agent<br/>Rules and anomaly checks"]
+  S --> SENT["Sentiment Agent<br/>News sentiment analysis"]
 
-    ↓
-[RESPONSE FORMATTING]
-├─ Chain-of-thought reasoning
-├─ Structured output with sources
-└─ Visualization recommendations
-    ↓
-Final Output to User
+  SENT --> NEWS["News Fetcher<br/>Supabase cache -> Scrapers"]
+  NEWS --> SCRAPE["Playwright Scrapers<br/>Bernama, The Edge"]
+
+  RAG --> AGG["Evidence Aggregation<br/>Citations, metrics, alerts"]
+  FIN --> AGG
+  ALERT --> AGG
+  SENT --> AGG
+
+  AGG --> RESP["Response Formatting<br/>Structured answer with sources"]
+  RESP --> OUT["Final Output to User"]
 ```
 
 ### 3.2 Agent Specifications
@@ -372,12 +332,17 @@ Process:
 Output:
 {
   "answer": "Comprehensive response with reasoning",
-  "agents_used": ["RAG", "Financial"],
+  "agents_used": ["RAG", "Financial", "Sentiment"],
   "steps": [
     "Step 1: Retrieved 3 relevant announcements",
     "Step 2: Calculated liquidity ratios from latest balance sheet",
     "Step 3: Cross-referenced with historical trends"
   ],
+  "sentiment": {
+    "overall_sentiment": "neutral",
+    "sentiment_score": 0.08,
+    "confidence": 0.63
+  },
   "citations": [
     {
       "type": "pdf_text_chunks",
@@ -511,6 +476,29 @@ Output:
 }
 ```
 
+#### **Sentiment Agent**
+
+**Responsibility:** News-driven sentiment analysis with company focus
+
+```
+Input: Company name + news articles + optional RAG context
+Process:
+1. Fetch cached news (Supabase) with scraper fallback
+2. Analyze sentiment (positive, neutral, negative)
+3. Compute sentiment score and confidence
+4. Summarize key sentiment drivers and trend
+
+Output:
+{
+  "overall_sentiment": "neutral",
+  "sentiment_score": 0.08,
+  "confidence": 0.63,
+  "summary": "Market tone is mixed with no strong directional bias",
+  "trend": "stable",
+  "articles_analyzed": 10
+}
+```
+
 ### 3.3 Agent Implementation
 
 ```python
@@ -519,6 +507,8 @@ apps/agents/
 ├── rag_agent.py           # Semantic retrieval
 ├── financial_agent.py     # Ratio & analysis
 ├── alert_agent.py         # Risk evaluation
+├── sentiment_agent.py     # News sentiment analysis
+├── news_fetcher.py        # Supabase cache + scraper fallback
 ├── schemas.py             # Output contracts
 └── config.py              # Agent configurations
 ```
@@ -723,66 +713,153 @@ WebSocket:      Socket.io (real-time alerts)
 
 ### End-to-End Data Flow
 
+```mermaid
+flowchart TB
+  subgraph ACQ[Acquisition]
+    B["Bursa Announcements<br/>Playwright + Video"]
+    N["News Outlets<br/>Scrapers or API"]
+    U["Manual Uploads"]
+  end
+
+  subgraph PROC[Processing]
+    P1["Parse PDFs/HTML"]
+    P2["OCR (scanned docs)"]
+    P3["Chunk + Normalize"]
+    P4["Embed (MiniLM 384)"]
+  end
+
+  subgraph STORE[Storage]
+    PG["PostgreSQL Metadata"]
+    MV["Milvus Embeddings"]
+    RD["Redis Cache/Progress"]
+    FS["File Storage"]
+  end
+
+  subgraph INTEL[Intelligence]
+    SUP["Supervisor"]
+    RAG["RAG"]
+    FIN["Financial"]
+    ALT["Alert"]
+    SEN["Sentiment"]
+  end
+
+  subgraph DELIV[Delivery]
+    DASH["Dashboard"]
+    COP["Copilot"]
+    API["REST / WebSocket"]
+    ALRT["Alerts"]
+  end
+
+  B --> P1
+  N --> P1
+  U --> P1
+  P1 --> P2 --> P3 --> P4
+  P4 --> MV
+  P3 --> PG
+  P3 --> FS
+  RD --> SUP
+  MV --> RAG
+  PG --> SUP
+  SUP --> RAG --> SUP
+  SUP --> FIN --> SUP
+  SUP --> ALT --> SUP
+  SUP --> SEN --> SUP
+  SUP --> DELIV
+  DELIV --> COP
+  DELIV --> DASH
+  DELIV --> API
+  DELIV --> ALRT
 ```
-┌─ ACQUISITION ──────────────────────────────────────┐
-│                                                     │
-│  Bursa Announcements → Playwright Browser Session   │
-│  ├─ Video Recording: /storage/videos/...webm      │
-│  ├─ Bounding Boxes: Annotated screenshots          │
-│  └─ Progress: Redis tracking (real-time)           │
-│                                                     │
-│  News Outlets → REST API Scraping                  │
-│  News Uploads → Manual File Upload UI              │
-│                                                     │
-└──────────┬────────────────────────────────────────┘
-           │
-           ▼
-┌─ PROCESSING ──────────────────────────────────────┐
-│                                                     │
-│  Raw PDF/HTML                                      │
-│  ├─ Parse: Extract text, tables, structure        │
-│  ├─ OCR: PaddleOCR for scanned documents          │
-│  ├─ Enrich: Entities, sentiment, ratios           │
-│  ├─ Chunk: 512-token windows with overlap         │
-│  └─ Embed: Sentence-Transformers (384-dim)        │
-│                                                     │
-│  Output: Normalized chunks with metadata           │
-│                                                     │
-└──────────┬────────────────────────────────────────┘
-           │
-           ▼
-┌─ STORAGE ─────────────────────────────────────────┐
-│                                                     │
-│  PostgreSQL:        Metadata, company profiles     │
-│  Milvus:           Text & table embeddings (VNN)  │
-│  Redis:             Cache & session state          │
-│  File Storage:      Raw PDFs, videos, extracts    │
-│                                                     │
-└──────────┬────────────────────────────────────────┘
-           │
-           ▼
-┌─ INTELLIGENCE ─────────────────────────────────────┐
-│                                                     │
-│  User Query                                        │
-│  ├─ Supervisor: Route to agents                   │
-│  ├─ RAG: Semantic search (k=3 results)            │
-│  ├─ Financial: Calculate metrics & trends         │
-│  ├─ Alert: Evaluate rules & flag anomalies        │
-│  └─ Synthesis: Merge + cite sources               │
-│                                                     │
-│  Output: Evidence-backed response                 │
-│                                                     │
-└──────────┬────────────────────────────────────────┘
-           │
-           ▼
-┌─ DELIVERY ────────────────────────────────────────┐
-│                                                     │
-│  Dashboard:         Company 360, alerts, timeline  │
-│  Copilot:           Question answering + evidence  │
-│  Alerts:            Push notifications, email      │
-│  API:               REST endpoints (JSON)          │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+
+---
+
+## Mermaid Sequence Diagrams
+
+### Copilot Query Orchestration
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant UI as Frontend (Copilot)
+  participant API as FastAPI
+  participant SUP as Supervisor
+  participant RAG as RAG Agent
+  participant FIN as Financial Agent
+  participant ALT as Alert Agent
+  participant SEN as Sentiment Agent
+  participant MV as Milvus
+  participant PG as PostgreSQL
+
+  UI->>API: POST /copilot/start (query)
+  API->>SUP: process(query)
+  SUP->>RAG: retrieve(query)
+  RAG->>MV: vector search (text+table)
+  MV-->>RAG: top-k chunks
+  RAG-->>SUP: summary + citations
+
+  SUP->>FIN: analyze(context) (if needed)
+  FIN-->>SUP: metrics + analysis
+
+  SUP->>ALT: evaluate(context) (if needed)
+  ALT-->>SUP: alerts
+
+  SUP->>SEN: analyze(news) (if needed)
+  SEN-->>SUP: sentiment summary
+
+  SUP->>PG: store/lookup metadata
+  PG-->>SUP: metadata
+  SUP-->>API: final answer + citations
+  API-->>UI: response
+```
+
+### ETL Pipeline (PDF -> Embeddings)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant SRC as Source (PDF/HTML)
+  participant EXT as Extractor
+  participant OCR as OCR
+  participant CHK as Chunker
+  participant EMB as Embedder
+  participant MV as Milvus
+  participant PG as PostgreSQL
+  participant FS as File Storage
+
+  SRC->>EXT: ingest document
+  EXT->>OCR: scan pages (if needed)
+  OCR-->>EXT: text output
+  EXT->>CHK: normalized text + tables
+  CHK->>EMB: chunks
+  EMB-->>CHK: embeddings
+  CHK->>MV: upsert vectors
+  CHK->>PG: write metadata
+  CHK->>FS: store raw/processed assets
+```
+
+### News Scraping + Sentiment
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant SUP as Supervisor
+  participant NEWS as News Fetcher
+  participant SB as Supabase
+  participant SCR as Scrapers
+  participant SEN as Sentiment Agent
+
+  SUP->>NEWS: fetch_news(company)
+  NEWS->>SB: query cached articles
+  alt cache hit
+    SB-->>NEWS: articles
+  else cache miss
+    NEWS->>SCR: run Playwright scrapers
+    SCR-->>NEWS: new articles
+    NEWS->>SB: store articles
+  end
+  NEWS-->>SUP: articles
+  SUP->>SEN: analyze(articles)
+  SEN-->>SUP: sentiment output
 ```
 
 ---
@@ -815,13 +892,18 @@ cp .env.example .env
 DATABASE_URL=postgresql://user:password@localhost:5432/market_intel
 REDIS_URL=redis://localhost:6379/0
 
-# LLM (OpenAI/DeepSeek)
-OPENAI_API_KEY=sk-...
-LLM_MODEL=gpt-4o-mini
+# LLM (OpenRouter)
+OPENROUTER_API_KEY=sk-...
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_TIMEOUT_SECONDS=30
+OPENROUTER_MAX_RETRIES=2
 
 # Vector Database (Milvus)
 MILVUS_HOST=localhost
-MILVUS_PORT=19530
+MILVUS_PORT=19639
+
+# Sentiment Agent
+USE_SENTIMENT_AGENT=true
 
 # Bursa Scraping
 PLAYWRIGHT_HEADLESS=False
@@ -887,24 +969,43 @@ uv run python -m etl.document_processor \
 
 ## API Reference
 
-### Copilot Endpoint
+### Copilot Endpoints
+
+Immediate response:
 
 ```bash
-POST /api/v1/copilot/chat
+POST /api/v1/copilot/query
 Content-Type: application/json
 
 {
   "query": "What are the latest dividend announcements?",
-  "company_filter": "AMBANK",  # Optional
-  "include_tables": true
+  "session_id": "default-session",
+  "stream": false
 }
+```
+
+Job-based (progress polling):
+
+```bash
+POST /api/v1/copilot/start
+Content-Type: application/json
+
+{
+  "query": "What are the latest dividend announcements?",
+  "session_id": "default-session",
+  "stream": false
+}
+
+GET /api/v1/copilot/status/{job_id}
+GET /api/v1/copilot/results/{job_id}
 
 Response:
 {
   "answer": "...",
-  "agents_used": ["RAG", "Financial"],
+  "agents_used": ["RAG", "Financial", "Sentiment"],
   "citations": [...],
-  "processing_time_ms": 2340
+  "confidence_score": 0.72,
+  "sentiment": {...}
 }
 ```
 
@@ -1045,23 +1146,23 @@ HackLab2.0_Ambank/
 
 ### Backend
 
-| Layer                    | Technology                       | Purpose                                      |
-| ------------------------ | -------------------------------- | -------------------------------------------- |
-| **Framework**      | FastAPI, Uvicorn                 | REST API, async support                      |
-| **Web Scraping**   | Playwright                       | Browser automation, recording, visualization |
-| **PDF Extraction** | pdfplumber, tabula-py            | Text & table extraction from PDFs            |
-| **Embeddings**     | Sentence-Transformers (MiniLM)   | 384-dim vector generation                    |
-| **AI/LLM**         | OpenAI API, LangChain, LangGraph | Agent orchestration, reasoning               |
-| **Vector DB**      | Milvus                           | Semantic search, similarity indexing (HNSW)  |
-| **SQL DB**         | PostgreSQL, SQLAlchemy           | Metadata, structured data, ORM               |
-| **Cache**          | Redis                            | Session, progress, query cache               |
-| **Agent Layer**    | LangChain, LangGraph             | Financial, RAG, Alert, Supervisor agents     |
-| **Testing**        | Pytest, pytest-cov               | Unit & integration tests                     |
+| Layer              | Technology                                 | Purpose                                      |
+| ------------------ | ------------------------------------------ | -------------------------------------------- |
+| **Framework**      | FastAPI, Uvicorn                           | REST API, async support                      |
+| **Web Scraping**   | Playwright                                 | Browser automation, recording, visualization |
+| **PDF Extraction** | pdfplumber, tabula-py                      | Text & table extraction from PDFs            |
+| **Embeddings**     | Sentence-Transformers (MiniLM)             | 384-dim vector generation                    |
+| **AI/LLM**         | OpenRouter (GPT-OSS), LangChain, LangGraph | Agent orchestration, reasoning               |
+| **Vector DB**      | Milvus                                     | Semantic search, similarity indexing (HNSW)  |
+| **SQL DB**         | PostgreSQL, SQLAlchemy                     | Metadata, structured data, ORM               |
+| **Cache**          | Redis                                      | Session, progress, query cache               |
+| **Agent Layer**    | LangChain, LangGraph                       | Financial, RAG, Alert, Supervisor agents     |
+| **Testing**        | Pytest, pytest-cov                         | Unit & integration tests                     |
 
 ### Frontend
 
-| Layer                   | Technology                | Purpose                    |
-| ----------------------- | ------------------------- | -------------------------- |
+| Layer             | Technology                | Purpose                    |
+| ----------------- | ------------------------- | -------------------------- |
 | **Framework**     | Next.js 16, React 19      | App router, SSR            |
 | **Styling**       | Tailwind CSS 4, Shadcn/UI | Component styling, theming |
 | **State**         | Zustand                   | Global state management    |
@@ -1073,8 +1174,8 @@ HackLab2.0_Ambank/
 
 ### Infrastructure
 
-| Component                 | Technology                   |
-| ------------------------- | ---------------------------- |
+| Component           | Technology                   |
+| ------------------- | ---------------------------- |
 | **Containers**      | Docker, Docker Compose       |
 | **Orchestration**   | Docker Compose (development) |
 | **Package Manager** | uv (Python), npm (Node)      |
@@ -1189,5 +1290,5 @@ Internal Use - Hackathon Project
 
 ---
 
-**Last Updated:** January 14, 2025
+**Last Updated:** February 6, 2026
 **Version:** 1.0.0-mvp
