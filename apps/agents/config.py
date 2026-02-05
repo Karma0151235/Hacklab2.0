@@ -51,6 +51,9 @@ class AgentConfig:
     ALERT_NET_PROFIT_MARGIN_MIN = 0.0
     ALERT_REVENUE_GROWTH_MIN = -10.0
 
+    # Sentiment Agent Toggle
+    USE_SENTIMENT_AGENT = os.getenv("USE_SENTIMENT_AGENT", "true").lower() == "true"
+
     @classmethod
     def validate(cls) -> bool:
         """Validate configuration"""

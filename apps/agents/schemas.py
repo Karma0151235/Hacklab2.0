@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
 import pandas as pd
+from scraping.news.schemas import NewsArticle
 
 
 # ============================================================================
@@ -141,6 +142,43 @@ class AlertAgentOutput(BaseModel):
 
 
 # ============================================================================
+# Sentiment Agent Schemas
+# ============================================================================
+
+class SentimentAgentInput(BaseModel):
+    """Input schema for Sentiment Agent"""
+    query: str = Field(..., description="Query for sentiment analysis")
+    company_name: Optional[str] = Field(default=None, description="Company to focus analysis on")
+    news_articles: List[NewsArticle] = Field(default_factory=list, description="News articles to analyze")
+    rag_context: Optional[RAGOutput] = Field(default=None, description="Additional context from RAG")
+
+
+class SentimentAgentOutput(BaseModel):
+    """Output schema for Sentiment Agent"""
+    overall_sentiment: str = Field(..., description="Overall sentiment: positive, neutral, negative")
+    sentiment_score: float = Field(..., ge=-1.0, le=1.0, description="Sentiment score from -1.0 to 1.0")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence in analysis")
+    
+    # Detailed breakdown
+    sentiment_by_source: Dict[str, float] = Field(default_factory=dict, description="Sentiment by news source")
+    key_topics: List[str] = Field(default_factory=list, description="Key topics identified")
+    key_phrases: List[str] = Field(default_factory=list, description="Key phrases influencing sentiment")
+    
+    # Trend analysis
+    trend: str = Field(default="stable", description="Sentiment trend: improving, stable, declining")
+    trend_explanation: str = Field(default="", description="Explanation for trend")
+    
+    # Company-specific
+    company_sentiments: Dict[str, float] = Field(default_factory=dict, description="Sentiment by company")
+    
+    # Summary
+    summary: str = Field(..., description="Human-readable summary of sentiment analysis")
+    articles_analyzed: int = Field(default=0, description="Number of articles analyzed")
+    
+    analyzed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ============================================================================
 # Supervisor Agent Schemas
 # ============================================================================
 
@@ -168,6 +206,7 @@ class SupervisorOutput(BaseModel):
     citations: List[Citation] = Field(default_factory=list)
     steps: List[str] = Field(..., description="Chain-of-Thought reasoning steps")
     table_data: Optional[Dict[str, Any]] = Field(default=None, description="Reconstructed table data")
+    sentiment: Optional[SentimentAgentOutput] = Field(default=None, description="Sentiment analysis results")
     confidence_score: float = Field(default=0.0, description="Overall confidence in response")
 
 

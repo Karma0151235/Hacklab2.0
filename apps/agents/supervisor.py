@@ -19,12 +19,14 @@ from agents.schemas import (
     RAGQuery,
     FinancialAgentInput,
     AlertAgentInput,
+    SentimentAgentInput,
 )
 from agents.config import AgentConfig
 from agents.rag_agent import RAGAgent
 from agents.financial_agent import FinancialAgent
 from agents.alert_agent import AlertAgent
-from agents.sentiment_agent import SentimentAgent, SentimentAgentInput
+from agents.sentiment_agent import SentimentAgent
+from agents.news_fetcher import fetch_news_for_company
 from etl.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -176,7 +178,10 @@ Always:
             )
             
             # Early-exit check: Skip expensive agent calls if RAG returns no/low-quality results
+            # Note: Sentiment Agent still runs in this path (news-based, not RAG-dependent)
             rag_quality = self._assess_rag_quality(rag_output)
+            sentiment_output = None
+
             if rag_quality["skip_expensive_agents"]:
                 logger.warning(f"Low RAG quality detected ({rag_quality['reason']}), skipping Financial/Alert agents")
                 steps.append(f"⚠ Low-quality RAG results detected: {rag_quality['reason']}")
@@ -195,18 +200,66 @@ Always:
                     message="Skipped due to low-quality RAG results",
                     step="Alert agent skipped"
                 )
-                
-                # Return early with just RAG results
+
+                # Try to run Sentiment Agent even with low RAG quality
+                if self.config.USE_SENTIMENT_AGENT and agent_plan.get("use_sentiment"):
+                    steps.append("Analyzing market sentiment from news sources (RAG-independent)")
+                    sentiment_start = perf_counter()
+                    company_name = agent_plan.get("company_name")
+
+                    self._emit_progress(
+                        progress_callback,
+                        agent_id="sentiment",
+                        status="running",
+                        message="Fetching and analyzing news for sentiment analysis",
+                        step="Sentiment agent started"
+                    )
+
+                    try:
+                        news_articles = fetch_news_for_company(company_name, limit=10)
+                        sentiment_output = self.sentiment_agent.analyze(SentimentAgentInput(
+                            query=input_data.query,
+                            company_name=company_name,
+                            news_articles=news_articles,
+                            rag_context=rag_output
+                        ))
+
+                        sentiment_duration = perf_counter() - sentiment_start
+                        agents_used.append("Sentiment")
+                        steps.append(f"Sentiment analysis: {sentiment_output.overall_sentiment} ({sentiment_output.sentiment_score:.2f})")
+
+                        self._emit_progress(
+                            progress_callback,
+                            agent_id="sentiment",
+                            status="completed",
+                            message=f"Sentiment: {sentiment_output.overall_sentiment} in {sentiment_duration:.1f}s",
+                            step="Sentiment agent completed"
+                        )
+                    except Exception as e:
+                        logger.error(f"Sentiment agent error: {str(e)}")
+                        self._emit_progress(
+                            progress_callback,
+                            agent_id="sentiment",
+                            status="error",
+                            message=f"Sentiment analysis failed: {str(e)}",
+                            step="Sentiment agent error"
+                        )
+
+                # Return early with RAG + optional Sentiment results
                 answer = self._synthesize_response_rag_only(
                     input_data.query,
                     rag_output,
                     rag_quality,
+                    sentiment_output,
                     steps
                 )
-                
+
                 citations = self._build_citations(rag_output)
                 table_data = self._prepare_table_data(rag_output)
                 confidence = rag_quality["confidence"]
+                if sentiment_output and sentiment_output.confidence > 0:
+                    confidence = (confidence * 0.7) + (sentiment_output.confidence * 0.3)
+
                 total_duration = perf_counter() - overall_start
                 self._emit_progress(
                     progress_callback,
@@ -215,13 +268,14 @@ Always:
                     message=f"Completed with RAG-only response in {total_duration:.1f}s",
                     step="Supervisor completed"
                 )
-                
+
                 return SupervisorOutput(
                     answer=answer,
                     agents_used=agents_used,
                     citations=citations,
                     steps=steps,
                     table_data=table_data,
+                    sentiment=sentiment_output,
                     confidence_score=confidence
                 )
 
@@ -281,6 +335,71 @@ Always:
                     step="Alert agent completed"
                 )
 
+            # Step 4b: Call Sentiment Agent if needed
+            sentiment_output = None
+            if self.config.USE_SENTIMENT_AGENT and agent_plan.get("use_sentiment"):
+                steps.append("Analyzing market sentiment from news sources")
+                sentiment_start = perf_counter()
+                company_name = agent_plan.get("company_name")
+
+                self._emit_progress(
+                    progress_callback,
+                    agent_id="sentiment",
+                    status="running",
+                    message=f"Fetching and analyzing news for sentiment analysis",
+                    step="Sentiment agent started"
+                )
+
+                try:
+                    # Fetch news for company
+                    news_articles = fetch_news_for_company(company_name, limit=10)
+
+                    sentiment_output = self.sentiment_agent.analyze(SentimentAgentInput(
+                        query=input_data.query,
+                        company_name=company_name,
+                        news_articles=news_articles,
+                        rag_context=rag_output
+                    ))
+
+                    sentiment_duration = perf_counter() - sentiment_start
+                    agents_used.append("Sentiment")
+                    steps.append(f"Sentiment analysis: {sentiment_output.overall_sentiment} ({sentiment_output.sentiment_score:.2f})")
+
+                    self._emit_progress(
+                        progress_callback,
+                        agent_id="sentiment",
+                        status="completed",
+                        message=f"Sentiment: {sentiment_output.overall_sentiment} ({sentiment_output.articles_analyzed} articles) in {sentiment_duration:.1f}s",
+                        step="Sentiment agent completed"
+                    )
+                except Exception as e:
+                    logger.error(f"Sentiment agent error: {str(e)}")
+                    self._emit_progress(
+                        progress_callback,
+                        agent_id="sentiment",
+                        status="error",
+                        message=f"Sentiment analysis failed: {str(e)}",
+                        step="Sentiment agent error"
+                    )
+            else:
+                # Log why sentiment was skipped
+                if not self.config.USE_SENTIMENT_AGENT:
+                    self._emit_progress(
+                        progress_callback,
+                        agent_id="sentiment",
+                        status="skipped",
+                        message="Skipped: sentiment agent disabled in config",
+                        step="Sentiment agent skipped"
+                    )
+                elif not agent_plan.get("use_sentiment"):
+                    self._emit_progress(
+                        progress_callback,
+                        agent_id="sentiment",
+                        status="skipped",
+                        message="Skipped: sentiment analysis not required for this query",
+                        step="Sentiment agent skipped"
+                    )
+
             # Step 5: Aggregate outputs
             steps.append("Aggregating outputs and synthesizing final response")
             synthesis_start = perf_counter()
@@ -296,6 +415,7 @@ Always:
                 rag_output,
                 financial_output,
                 alert_output,
+                sentiment_output,
                 steps
             )
             synthesis_duration = perf_counter() - synthesis_start
@@ -307,7 +427,7 @@ Always:
             table_data = self._prepare_table_data(rag_output)
 
             # Step 8: Calculate confidence
-            confidence = self._calculate_confidence(rag_output, financial_output, alert_output)
+            confidence = self._calculate_confidence(rag_output, financial_output, alert_output, sentiment_output)
 
             output = SupervisorOutput(
                 answer=answer,
@@ -315,6 +435,7 @@ Always:
                 citations=citations,
                 steps=steps,
                 table_data=table_data,
+                sentiment=sentiment_output,
                 confidence_score=confidence
             )
 
@@ -365,7 +486,7 @@ Always:
             payload["step"] = step
         progress_callback(payload)
 
-    def _plan_agent_execution(self, query: str) -> Dict[str, bool]:
+    def _plan_agent_execution(self, query: str) -> Dict[str, Any]:
         """Determine which agents to call based on query"""
         try:
             prompt = f"""Analyze this query and determine which agents should be called.
@@ -378,12 +499,13 @@ Available agents:
 3. Alert Agent - evaluates alerts based on thresholds and keywords
 4. Sentiment Agent - analyzes news sentiment and market mood
 
-Respond with JSON indicating which agents to use:
+Respond with JSON indicating which agents to use and any company mentioned:
 {{
   "use_rag": true,
   "use_financial": true/false,
   "use_alert": true/false,
   "use_sentiment": true/false,
+  "company_name": "extracted company name or null",
   "reasoning": "brief explanation"
 }}
 
@@ -400,7 +522,9 @@ Use Alert Agent for queries about:
 Use Sentiment Agent for queries about:
 - News sentiment, market sentiment
 - Media coverage, press, headlines
-- Public perception, investor sentiment"""
+- Public perception, investor sentiment
+
+Extract the company name if mentioned (e.g., "MAYBANK", "Maybank Group", etc.)."""
 
             response = self.client.chat.completions.create(
                 model=self.config.GLM_4_5_MODEL,
@@ -429,11 +553,23 @@ Use Sentiment Agent for queries about:
                 return plan
             except:
                 # Default: use all agents
-                return {"use_rag": True, "use_financial": True, "use_alert": True, "use_sentiment": False}
+                return {
+                    "use_rag": True,
+                    "use_financial": True,
+                    "use_alert": True,
+                    "use_sentiment": False,
+                    "company_name": None
+                }
 
         except Exception as e:
             logger.warning(f"Error planning agent execution: {str(e)}")
-            return {"use_rag": True, "use_financial": True, "use_alert": True, "use_sentiment": False}
+            return {
+                "use_rag": True,
+                "use_financial": True,
+                "use_alert": True,
+                "use_sentiment": False,
+                "company_name": None
+            }
 
 
     def _synthesize_response(
@@ -442,6 +578,7 @@ Use Sentiment Agent for queries about:
         rag_output,
         financial_output,
         alert_output,
+        sentiment_output,
         steps: List[str]
     ) -> str:
         """Synthesize final response from all agent outputs"""
@@ -465,6 +602,18 @@ Use Sentiment Agent for queries about:
                 context_parts.append(f"\n=== Alerts ===")
                 for alert in alert_output.alerts:
                     context_parts.append(f"- [{alert.severity.upper()}] {alert.message}")
+
+            if sentiment_output:
+                context_parts.append(f"\n=== Sentiment Analysis ===")
+                context_parts.append(f"Overall Sentiment: {sentiment_output.overall_sentiment.upper()}")
+                context_parts.append(f"Sentiment Score: {sentiment_output.sentiment_score:.2f}")
+                context_parts.append(f"Confidence: {sentiment_output.confidence:.1%}")
+                if sentiment_output.summary:
+                    context_parts.append(f"\nSummary: {sentiment_output.summary}")
+                if sentiment_output.key_topics:
+                    context_parts.append(f"\nKey Topics: {', '.join(sentiment_output.key_topics)}")
+                if sentiment_output.articles_analyzed > 0:
+                    context_parts.append(f"Articles Analyzed: {sentiment_output.articles_analyzed}")
 
             context = "\n".join(context_parts)
 
@@ -576,7 +725,7 @@ Be clear, concise, and specific. Include numbers and citations."""
             "table_index": table_chunk.metadata.table_index
         }
 
-    def _calculate_confidence(self, rag_output, financial_output, alert_output) -> float:
+    def _calculate_confidence(self, rag_output, financial_output, alert_output, sentiment_output) -> float:
         """Calculate overall confidence score"""
         if not rag_output.metadata:
             return 0.1
@@ -589,6 +738,11 @@ Be clear, concise, and specific. Include numbers and citations."""
             metrics_count = sum(1 for v in financial_output.metrics.dict().values() if v is not None)
             if metrics_count > 5:
                 avg_confidence = min(avg_confidence * 1.2, 1.0)
+
+        # Factor in sentiment confidence if available
+        if sentiment_output and sentiment_output.confidence > 0:
+            # Weight sentiment confidence (30%) with RAG confidence (70%)
+            avg_confidence = (avg_confidence * 0.7) + (sentiment_output.confidence * 0.3)
 
         # Reduce confidence if high severity alerts
         if alert_output and alert_output.alerts:
@@ -654,34 +808,45 @@ Be clear, concise, and specific. Include numbers and citations."""
         query: str,
         rag_output,
         rag_quality: Dict[str, Any],
+        sentiment_output,
         steps: List[str]
     ) -> str:
         """
-        Synthesize response using only RAG output (fast path for low-quality results)
-        
+        Synthesize response using RAG + optional Sentiment (fast path for low-quality RAG results)
+
         This is a lightweight alternative to full synthesis when RAG returns poor results.
+        Sentiment can still provide value as it's news-based and independent of RAG quality.
         """
         try:
-            if not rag_output.summary or len(rag_output.summary.strip()) < 20:
-                return (
-                    f"I couldn't find relevant information to answer your query. "
-                    f"Reason: {rag_quality['reason']}. "
-                    f"Please try rephrasing your question or check if the documents contain the information you need."
+            response_parts = []
+
+            # RAG context
+            if rag_output.summary and len(rag_output.summary.strip()) >= 20:
+                response_parts.append("Based on limited context retrieved from the knowledge base:")
+                response_parts.append(rag_output.summary)
+                response_parts.append(f"\n⚠ Note: {rag_quality['reason']}. The above information may not fully answer your query.")
+            else:
+                response_parts.append(
+                    f"I couldn't find relevant document context to answer your query. "
+                    f"Reason: {rag_quality['reason']}."
                 )
-            
-            # If we have some context but it's low quality, provide it with caveats
-            response_parts = [
-                f"Based on limited context retrieved from the knowledge base:",
-                f"\n{rag_output.summary}",
-                f"\n\n⚠ Note: {rag_quality['reason']}. The above information may not fully answer your query.",
-                f"\nConfidence: {rag_quality['confidence']:.0%}"
-            ]
-            
+
+            # Sentiment context (if available)
+            if sentiment_output:
+                response_parts.append(f"\nMarket Sentiment Analysis:")
+                response_parts.append(f"- Overall: {sentiment_output.overall_sentiment.upper()} (score: {sentiment_output.sentiment_score:.2f})")
+                if sentiment_output.summary:
+                    response_parts.append(f"- Summary: {sentiment_output.summary}")
+                if sentiment_output.key_topics:
+                    response_parts.append(f"- Key topics: {', '.join(sentiment_output.key_topics)}")
+
+            response_parts.append(f"\nConfidence: {rag_quality['confidence']:.0%}")
+
             if rag_output.entities:
-                response_parts.append(f"\nMentioned entities: {', '.join(rag_output.entities)}")
-            
+                response_parts.append(f"Mentioned entities: {', '.join(rag_output.entities)}")
+
             return "\n".join(response_parts)
-            
+
         except Exception as e:
             logger.error(f"Error in RAG-only synthesis: {str(e)}")
             return f"Unable to process query due to low-quality results. Reason: {rag_quality['reason']}"

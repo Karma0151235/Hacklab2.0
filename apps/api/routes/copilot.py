@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _flow_instance = None
 _copilot_jobs: Dict[str, Dict[str, Any]] = {}
 
-DEFAULT_AGENT_IDS = ["supervisor", "rag", "financial", "alert"]
+DEFAULT_AGENT_IDS = ["supervisor", "rag", "financial", "alert", "sentiment"]
 
 class CopilotQueryRequest(BaseModel):
     """Request model for copilot query"""
@@ -282,7 +282,8 @@ async def health_check():
             "supervisor": "ready",
             "rag": "ready",
             "financial": "ready",
-            "alert": "ready"
+            "alert": "ready",
+            "sentiment": "ready"
         },
         milvus=milvus_status,
         openrouter=openrouter_status,
