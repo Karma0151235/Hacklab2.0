@@ -24,7 +24,7 @@ services:
 
   # Milvus Vector Database
   milvus:
-    image: milvusdb/milvus:v2.4.6
+    image: milvusdb/milvus:v2.5.0
     container_name: market_intel_milvus
     depends_on:
       - minio
