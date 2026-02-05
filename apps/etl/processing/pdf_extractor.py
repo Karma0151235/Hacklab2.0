@@ -32,13 +32,6 @@ class PDFExtractor:
             logger.error("pdfplumber not installed. Install with: pip install pdfplumber")
             raise
 
-        try:
-            import tabula
-            self.tabula = tabula
-        except ImportError:
-            logger.error("tabula-py not installed. Install with: pip install tabula-py")
-            raise
-
     def extract_from_file(self, pdf_path: Path) -> Optional[PDFContent]:
         """
         Extract text and tables from a PDF file
@@ -87,68 +80,34 @@ class PDFExtractor:
             return ""
 
     def _extract_tables(self, pdf_path: Path) -> List[List[List[str]]]:
-        """Extract tables from PDF using tabula-py"""
+        """Extract tables from PDF using pdfplumber (no Java dependency)"""
         try:
-            import pandas as pd
+            tables = []
 
-            # Try different extraction strategies
-            dfs = None
-            
-            # Strategy 1: Stream mode without encoding (let tabula handle it)
-            try:
-                dfs = self.tabula.read_pdf(
-                    str(pdf_path),
-                    pages="all",
-                    multiple_tables=True,
-                    stream=True
-                )
-            except Exception as e:
-                logger.debug(f"Stream mode failed: {str(e)}")
-            
-            # Strategy 2: Lattice mode if stream failed
-            if not dfs:
-                try:
-                    dfs = self.tabula.read_pdf(
-                        str(pdf_path),
-                        pages="all",
-                        multiple_tables=True,
-                        lattice=True
-                    )
-                except Exception as e:
-                    logger.debug(f"Lattice mode failed: {str(e)}")
-            
-            # Strategy 3: Try with explicit latin-1 encoding (common in financial docs)
-            if not dfs:
-                try:
-                    dfs = self.tabula.read_pdf(
-                        str(pdf_path),
-                        pages="all",
-                        multiple_tables=True,
-                        stream=True,
-                        encoding='latin-1'
-                    )
-                except Exception as e:
-                    logger.debug(f"Latin-1 encoding failed: {str(e)}")
+            with self.pdfplumber.open(pdf_path) as pdf:
+                for page_num, page in enumerate(pdf.pages, 1):
+                    try:
+                        # Extract tables from current page
+                        page_tables = page.extract_tables()
 
-            if not dfs:
+                        if page_tables:
+                            for table in page_tables:
+                                # Convert table to list of lists with safe encoding
+                                safe_table = []
+                                for row in table:
+                                    safe_row = [self._safe_str(cell) for cell in row]
+                                    safe_table.append(safe_row)
+                                tables.append(safe_table)
+
+                    except Exception as e:
+                        logger.debug(f"Failed to extract tables from page {page_num}: {str(e)}")
+                        continue
+
+            if not tables:
                 logger.warning("No tables found in PDF")
                 return []
 
-            tables = []
-            for df in dfs:
-                # Convert DataFrame to list of lists with safe encoding handling
-                # First, convert column names to strings, handling encoding issues
-                columns = [self._safe_str(col) for col in df.columns]
-                
-                # Then convert each row, handling encoding issues in cell values
-                rows = []
-                for row in df.values:
-                    safe_row = [self._safe_str(cell) for cell in row]
-                    rows.append(safe_row)
-                
-                table = [columns] + rows
-                tables.append(table)
-
+            logger.debug(f"Extracted {len(tables)} tables using pdfplumber")
             return tables
 
         except Exception as e:

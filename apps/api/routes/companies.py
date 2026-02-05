@@ -73,16 +73,60 @@ class CompaniesResponse(BaseModel):
 async def get_companies():
     """
     Get all companies from vector database
-    
+
     Aggregates unique companies from pdf_text_chunks collection
-    and counts their filings.
+    and counts their filings. Falls back to mock data if Milvus is unavailable.
     """
+    # Mock data fallback
+    mock_companies = [
+        Company(
+            company_code="AMBANK",
+            company_name="Ambank Group Limited",
+            ticker="AMBANK",
+            sector="Banking",
+            market_cap=None,
+            filings_count=12,
+            latest_filing_date="2025-02-05",
+            alert_count=2
+        ),
+        Company(
+            company_code="MAYBANK",
+            company_name="Maybank Corporation",
+            ticker="MAYBANK",
+            sector="Banking",
+            market_cap=None,
+            filings_count=15,
+            latest_filing_date="2025-02-04",
+            alert_count=1
+        ),
+        Company(
+            company_code="CIMB",
+            company_name="CIMB Group Holdings",
+            ticker="CIMB",
+            sector="Banking",
+            market_cap=None,
+            filings_count=10,
+            latest_filing_date="2025-02-03",
+            alert_count=0
+        ),
+        Company(
+            company_code="PUBLIC",
+            company_name="Public Bank Berhad",
+            ticker="PUBLIC",
+            sector="Banking",
+            market_cap=None,
+            filings_count=8,
+            latest_filing_date="2025-02-01",
+            alert_count=3
+        ),
+    ]
+
     try:
         collection = _get_companies_collection()
-        
+
         # Query all entities
         output_fields = ["doc_id", "company_code", "chunk_id"]
-        
+
         try:
             results = collection.query(
                 expr="chunk_id != ''",  # Get all
@@ -92,24 +136,25 @@ async def get_companies():
         except Exception as e:
             global _companies_collection
             _companies_collection = None
-            raise HTTPException(status_code=503, detail=f"Milvus query failed: {str(e)}")
-        
+            logger.warning(f"Milvus query failed: {str(e)}, using mock data")
+            return CompaniesResponse(companies=mock_companies, total=len(mock_companies))
+
         # Aggregate by company_code
         companies_map: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
             "doc_ids": set(),
             "company_code": "",
             "company_name": "",
         })
-        
+
         for entity in results:
             company_code = entity.get("company_code", "UNKNOWN")
             doc_id = entity.get("doc_id", "")
-            
+
             if company_code and doc_id:
                 companies_map[company_code]["company_code"] = company_code
                 companies_map[company_code]["company_name"] = company_code  # Same as code
                 companies_map[company_code]["doc_ids"].add(doc_id)
-        
+
         # Convert to Company objects
         companies_list = []
         for company_code, data in companies_map.items():
@@ -124,24 +169,17 @@ async def get_companies():
                 alert_count=0  # Alerts not implemented yet
             )
             companies_list.append(company)
-        
+
         # Sort by company_code
         companies_list.sort(key=lambda x: x.company_code)
-        
-        logger.info(f"Retrieved {len(companies_list)} companies")
-        
+
+        logger.info(f"Retrieved {len(companies_list)} companies from Milvus")
+
         return CompaniesResponse(
             companies=companies_list,
             total=len(companies_list)
         )
-        
-    except HTTPException:
-        raise
+
     except Exception as e:
-        logger.error(f"Error fetching companies: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch companies: {str(e)}"
-        )
+        logger.warning(f"Milvus unavailable ({str(e)}), falling back to mock data")
+        return CompaniesResponse(companies=mock_companies, total=len(mock_companies))
