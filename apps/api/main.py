@@ -3,10 +3,15 @@ FastAPI main application
 """
 
 import os
-from fastapi import FastAPI
+import json
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from api.routes import pdf_ingestion, bursa_scraping, vectordb, copilot, filings, companies, news
 from agents.config import AgentConfig
+from etl.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="Financial Intelligence ETL API",
@@ -41,6 +46,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Request logging middleware for debugging
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "POST" and "/scraping/bursa/start" in request.url.path:
+            try:
+                body = await request.body()
+                logger.info(f"Bursa scraping request body: {json.loads(body)}")
+            except Exception as e:
+                logger.debug(f"Could not log request body: {e}")
+        return await call_next(request)
+
+app.add_middleware(RequestLoggingMiddleware)
 
 # Include routers
 app.include_router(pdf_ingestion.router, prefix="/api/v1", tags=["PDF Ingestion"])

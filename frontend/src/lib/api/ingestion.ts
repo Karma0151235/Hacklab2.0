@@ -350,17 +350,47 @@ export interface BursaScrapingResults {
 export async function startBursaScraping(request: BursaScrapingRequest): Promise<BursaScrapingResponse> {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
+  // Clean up payload - remove undefined values
+  const cleanPayload = {
+    year: request.year,
+    max_announcements: request.max_announcements,
+    company_filter: request.company_filter || null,
+    resource_efficient: request.resource_efficient ?? false,
+    use_cloudscraper: request.use_cloudscraper ?? true,
+    manual_captcha_timeout_seconds: request.manual_captcha_timeout_seconds ?? 120
+  }
+
+  console.log('Sending cleaned payload:', cleanPayload)
+
   const response = await fetch(`${API_BASE_URL}/api/v1/scraping/bursa/start`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify(cleanPayload),
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to start scraping' }))
-    throw new Error(error.detail || `Failed to start scraping: ${response.statusText}`)
+    let errorDetail = `Failed to start scraping: ${response.statusText}`
+    try {
+      const errorJson = await response.json()
+      console.log('API Error Response:', errorJson)
+
+      // Handle Pydantic validation errors
+      if (errorJson.detail) {
+        if (Array.isArray(errorJson.detail)) {
+          errorDetail = errorJson.detail.map((err: any) =>
+            `${err.loc?.join('.')}: ${err.msg}`
+          ).join('; ')
+        } else if (typeof errorJson.detail === 'string') {
+          errorDetail = errorJson.detail
+        }
+      }
+    } catch (e) {
+      console.log('Could not parse error response')
+    }
+
+    throw new Error(errorDetail)
   }
 
   return response.json()

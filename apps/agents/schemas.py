@@ -212,17 +212,110 @@ class SupervisorOutput(BaseModel):
 
 
 # ============================================================================
+# Intent Classification Schemas (V2)
+# ============================================================================
+
+class IntentClassification(BaseModel):
+    """Intent classification results from IntentClassifier"""
+    primary_intent: str = Field(..., description="Main intent: financial_analysis, risk_assessment, trend_analysis, information_retrieval")
+    secondary_intents: List[str] = Field(default_factory=list, description="Other detected intents")
+    required_agents: List[str] = Field(..., description="Agents that must run: rag, financial, alert")
+    optional_agents: List[str] = Field(default_factory=list, description="Agents that could enhance response")
+    data_quality_requirements: Dict[str, float] = Field(default_factory=dict, description="Min confidence scores, chunk counts")
+    priority_level: str = Field(default="normal", description="critical, high, normal, low")
+    confidence: float = Field(ge=0.0, le=1.0, description="Classification confidence")
+    reasoning: str = Field(..., description="Why this classification was made")
+
+
+class FinancialAgentRouting(BaseModel):
+    """Routing decision from Financial Agent"""
+    status: str = Field(..., description="complete, partial, or skip")
+    reason: str = Field(..., description="Why this routing decision")
+    should_continue_pipeline: bool = Field(..., description="Whether to proceed to Alert agent")
+    metrics_available: int = Field(default=0, description="Number of calculated metrics")
+    metrics_calculated: List[str] = Field(default_factory=list, description="Names of calculated metrics")
+    metrics_missing: List[str] = Field(default_factory=list, description="Names of metrics that couldn't be calculated")
+    recommended_next_step: str = Field(..., description="analyze_fully, partial_analysis, or skip_to_alerts_only")
+
+
+class AlertAgentRouting(BaseModel):
+    """Routing decision from Alert Agent"""
+    status: str = Field(..., description="high_alerts, low_alerts, or no_alerts")
+    alert_count: int = Field(default=0)
+    high_severity_count: int = Field(default=0)
+    low_severity_count: int = Field(default=0)
+    recommendation: str = Field(..., description="escalate, monitor, or routine")
+    requires_human_review: bool = Field(default=False)
+    dominant_alert_type: Optional[str] = None
+
+
+class ExtractedFinancialData(BaseModel):
+    """Extracted financial data with validation metadata"""
+    extracted_values: Dict[str, float] = Field(default_factory=dict)
+    missing_fields: List[str] = Field(default_factory=list)
+    data_quality: float = Field(ge=0.0, le=1.0, description="Data quality score")
+    extraction_confidence: float = Field(ge=0.0, le=1.0, description="LLM extraction confidence")
+    extraction_status: str = Field(default="success", description="success or error")
+    extraction_errors: List[str] = Field(default_factory=list)
+
+
+class RAGQualityAssessment(BaseModel):
+    """Assessment of RAG output quality"""
+    quality_score: float = Field(ge=0.0, le=1.0)
+    chunk_count: int
+    avg_confidence: float = Field(ge=0.0, le=1.0)
+    summary_length: int
+    has_errors: bool = Field(default=False)
+    error_indicators: List[str] = Field(default_factory=list)
+    assessment: str = Field(..., description="high_quality, low_quality, insufficient")
+
+
+# ============================================================================
 # Workflow State Schema
 # ============================================================================
 
 class WorkflowState(BaseModel):
-    """State passed through LangGraph workflow"""
+    """State passed through LangGraph workflow (V1)"""
     query: str
     supervisor_output: Optional[SupervisorOutput] = None
     rag_output: Optional[RAGOutput] = None
     financial_output: Optional[FinancialAgentOutput] = None
     alert_output: Optional[AlertAgentOutput] = None
     steps: List[str] = Field(default_factory=list)
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
+class AgentStateV2(BaseModel):
+    """Enhanced state for V2 workflow with intent classification and routing"""
+    query: str
+
+    # Intent classification
+    intent: Optional[IntentClassification] = None
+
+    # RAG results
+    rag_output: Optional[RAGOutput] = None
+    rag_quality: Optional[RAGQualityAssessment] = None
+
+    # Extracted financial data
+    extracted_financial_data: Optional[ExtractedFinancialData] = None
+
+    # Agent outputs
+    financial_output: Optional[FinancialAgentOutput] = None
+    financial_routing: Optional[FinancialAgentRouting] = None
+
+    alert_output: Optional[AlertAgentOutput] = None
+    alert_routing: Optional[AlertAgentRouting] = None
+
+    # Final output
+    supervisor_output: Optional[SupervisorOutput] = None
+
+    # Tracking and control
+    steps: List[str] = Field(default_factory=list)
+    error: Optional[str] = None
+    progress_callback: Optional[Any] = None  # Callable, but Any for serialization
+    session_id: Optional[str] = None
 
     class Config:
         arbitrary_types_allowed = True

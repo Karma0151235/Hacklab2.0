@@ -24,7 +24,7 @@ export default function BursaScraperPage() {
   // Configuration state
   const [year, setYear] = useState('2024')
   const [companyFilter, setCompanyFilter] = useState('')
-  const [maxAnnouncements, setMaxAnnouncements] = useState([10])
+  const [maxAnnouncements, setMaxAnnouncements] = useState([10])  // Min 5, default 10
   
   const {
     jobId,
@@ -52,21 +52,31 @@ export default function BursaScraperPage() {
     setIsStarting(true)
     setError(null)
     setLogFeed([])
-    
+
+    // Clear previous job state before starting new one
+    if (jobId && !isJobActive) {
+      clearJob()
+    }
+
     try {
-      const response = await startBursaScraping({
+      const payload = {
         year: parseInt(year),
         max_announcements: maxAnnouncements[0],
         company_filter: companyFilter.trim() || undefined,
         resource_efficient: false,
-        use_cloudscraper: false,
-        manual_captcha_timeout_seconds: 300
-      })
-      
+        use_cloudscraper: true,
+        manual_captcha_timeout_seconds: 120
+      }
+
+      console.log('Starting Bursa scraping with payload:', payload)
+
+      const response = await startBursaScraping(payload)
+
       setJobId(response.job_id)
       // Start polling for status
       pollStatus(response.job_id)
     } catch (err: any) {
+      console.error('Scraping error:', err)
       setError(err.message || 'Failed to start scraping')
     } finally {
       setIsStarting(false)
@@ -213,13 +223,13 @@ export default function BursaScraperPage() {
               <Slider
                 value={maxAnnouncements}
                 onValueChange={setMaxAnnouncements}
-                min={1}
+                min={5}
                 max={100}
                 step={1}
                 className="mt-4 w-full"
               />
               <div className="mt-2 flex justify-between text-xs text-gray-600">
-                <span>1</span>
+                <span>5</span>
                 <span>100</span>
               </div>
             </div>
