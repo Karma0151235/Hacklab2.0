@@ -17,6 +17,7 @@ from agents.schemas import (
     AlertAgentOutput,
     Alert,
     AlertConfig,
+    AlertAgentRouting,
     FinancialMetrics,
     RAGOutput,
 )
@@ -324,3 +325,48 @@ Format response as JSON:
             logger.error(f"Error evaluating sentiment: {str(e)}")
 
         return []
+
+    def route(self, output: AlertAgentOutput) -> AlertAgentRouting:
+        """
+        Route alert evaluation results based on alert severity and count.
+
+        Determines:
+        - Status: high_alerts, low_alerts, or no_alerts
+        - Alert counts (high, medium, low severity)
+        - Recommendation (escalate, monitor, routine)
+        - Whether human review is required
+
+        Returns:
+            AlertAgentRouting with routing decision
+        """
+        high_severity_alerts = [a for a in output.alerts if a.severity == "high"]
+        medium_severity_alerts = [a for a in output.alerts if a.severity == "medium"]
+        low_severity_alerts = [a for a in output.alerts if a.severity == "low"]
+
+        alert_count = len(output.alerts)
+        high_severity_count = len(high_severity_alerts)
+        low_severity_count = len(low_severity_alerts)
+
+        # Determine status based on alert severity
+        if high_severity_count > 0:
+            status = "high_alerts"
+            recommendation = "escalate"
+            requires_human_review = True
+        elif medium_severity_alerts:
+            status = "low_alerts"
+            recommendation = "monitor"
+            requires_human_review = medium_severity_alerts and len(medium_severity_alerts) >= 3
+        else:
+            status = "no_alerts"
+            recommendation = "routine"
+            requires_human_review = False
+
+        return AlertAgentRouting(
+            status=status,
+            alert_count=alert_count,
+            high_severity_count=high_severity_count,
+            low_severity_count=low_severity_count,
+            recommendation=recommendation,
+            requires_human_review=requires_human_review,
+            dominant_alert_type=high_severity_alerts[0].alert_type if high_severity_alerts else None
+        )

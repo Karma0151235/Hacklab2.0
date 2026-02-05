@@ -60,18 +60,18 @@ class CopilotJobStatus(BaseModel):
 
 
 def _get_flow():
-    """Get or create a cached IntelligenceFlow instance."""
+    """Get or create a cached IntelligenceFlowV2 instance."""
     global _flow_instance
     if _flow_instance is not None:
         return _flow_instance
 
     try:
-        from workflows.intelligence_flow import IntelligenceFlow
+        from workflows.intelligence_flow_v2 import IntelligenceFlowV2
     except ModuleNotFoundError as e:
         raise HTTPException(status_code=503, detail=f"Workflow dependency missing: {str(e)}")
 
     try:
-        _flow_instance = IntelligenceFlow()
+        _flow_instance = IntelligenceFlowV2()
     except (ModuleNotFoundError, ImportError) as e:
         _flow_instance = None
         raise HTTPException(status_code=503, detail=f"Workflow dependency missing: {str(e)}")
@@ -180,18 +180,16 @@ async def query_copilot(request: CopilotQueryRequest):
 
     try:
         logger.info(f"Received copilot query: {request.query}")
-        
-        # Run the intelligence workflow
-        # Note: We're using the sync wrapper run_intelligence_query for now
-        # In a production high-load scenario, we'd use the async flow.arun()
-        
-        # Initialize workflow
+
+        # Run the v2 intelligence workflow
         flow = _get_flow()
-        
-        # Execute (using async method if available in flow, else sync)
-        # The flow.arun method is async, so we await it
-        output = await flow.arun(request.query)
-        
+
+        # Execute the workflow with v2 interface
+        output = await flow.arun(
+            query=request.query,
+            session_id=request.session_id
+        )
+
         logger.info(f"Query processed successfully. Agents used: {output.agents_used}")
         return output
         
@@ -219,7 +217,11 @@ async def start_copilot_job(request: CopilotQueryRequest):
             flow = _get_flow()
             progress_callback = _build_progress_callback(job_id)
             _append_agent_log(job_id, "supervisor", "Workflow started", status="running")
-            output = await flow.arun(request.query, progress_callback=progress_callback)
+            output = await flow.arun(
+                query=request.query,
+                session_id=request.session_id,
+                progress_callback=progress_callback
+            )
             _copilot_jobs[job_id]["result"] = output.dict()
             _copilot_jobs[job_id]["status"] = "completed"
             _copilot_jobs[job_id]["completed_at"] = datetime.now().isoformat()

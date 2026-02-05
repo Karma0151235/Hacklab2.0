@@ -3,11 +3,28 @@ Pydantic schemas for agent inputs and outputs
 Enforces strict typing across the entire agent system
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Annotated
 from pydantic import BaseModel, Field
 from datetime import datetime
 import pandas as pd
 from scraping.news.schemas import NewsArticle
+from operator import add
+
+# Reducer function for list fields that may be updated concurrently
+def _list_reducer(existing: List[str], new: List[str]) -> List[str]:
+    """Combine lists from concurrent updates"""
+    if not existing:
+        return new
+    if not new:
+        return existing
+    # Combine and deduplicate while preserving order
+    seen = set(existing)
+    combined = list(existing)
+    for item in new:
+        if item not in seen:
+            combined.append(item)
+            seen.add(item)
+    return combined
 
 
 # ============================================================================
@@ -307,6 +324,8 @@ class AgentStateV2(BaseModel):
 
     alert_output: Optional[AlertAgentOutput] = None
     alert_routing: Optional[AlertAgentRouting] = None
+
+    sentiment_output: Optional[SentimentAgentOutput] = None
 
     # Final output
     supervisor_output: Optional[SupervisorOutput] = None

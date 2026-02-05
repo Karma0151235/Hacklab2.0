@@ -27,6 +27,7 @@ from agents.financial_agent import FinancialAgent
 from agents.alert_agent import AlertAgent
 from agents.sentiment_agent import SentimentAgent
 from agents.news_fetcher import fetch_news_for_company
+from workflows.intelligence_flow_v2 import IntelligenceFlowV2
 from etl.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -72,11 +73,22 @@ Always:
 - Prioritize accuracy over speculation
 - Clearly indicate confidence levels"""
 
-    def __init__(self):
-        """Initialize Supervisor Agent and sub-agents"""
-        self.config = AgentConfig
+    def __init__(self, use_v2_workflow: bool = True):
+        """
+        Initialize Supervisor Agent and sub-agents
 
-        # Initialize sub-agents
+        Args:
+            use_v2_workflow: If True, use IntelligenceFlowV2 for orchestration (default: True)
+        """
+        self.config = AgentConfig
+        self.use_v2_workflow = use_v2_workflow
+
+        # Initialize v2 workflow (new)
+        if self.use_v2_workflow:
+            logger.info("Initializing v2 workflow...")
+            self.workflow_v2 = IntelligenceFlowV2()
+
+        # Initialize sub-agents (kept for backward compatibility)
         logger.info("Initializing Supervisor Agent and sub-agents...")
         self.rag_agent = RAGAgent()
         self.financial_agent = FinancialAgent()
@@ -103,12 +115,104 @@ Always:
 
         Args:
             input_data: SupervisorInput with query
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            SupervisorOutput with aggregated response
+        """
+        # Use v2 workflow if enabled
+        if self.use_v2_workflow:
+            logger.info(f"Using v2 workflow for query: {input_data.query}")
+            return self._process_with_v2_workflow(input_data, progress_callback)
+
+        # Fall back to legacy orchestration
+        return self._process_legacy(input_data, progress_callback)
+
+    def _process_with_v2_workflow(
+        self,
+        input_data: SupervisorInput,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> SupervisorOutput:
+        """
+        Process query using v2 workflow orchestration
+
+        Args:
+            input_data: SupervisorInput with query
+            progress_callback: Optional callback for progress updates
 
         Returns:
             SupervisorOutput with aggregated response
         """
         try:
-            logger.info(f"Supervisor processing query: {input_data.query}")
+            logger.info(f"Starting v2 workflow for: {input_data.query[:80]}...")
+            overall_start = perf_counter()
+
+            # Emit start progress
+            if progress_callback:
+                progress_callback({
+                    "agent_id": "supervisor",
+                    "status": "running",
+                    "message": "Starting v2 workflow orchestration",
+                    "step": "v2 workflow started"
+                })
+
+            # Run v2 workflow
+            output = self.workflow_v2.run(
+                query=input_data.query,
+                session_id=input_data.session_id,
+                progress_callback=progress_callback
+            )
+
+            total_duration = perf_counter() - overall_start
+            logger.info(f"v2 workflow completed in {total_duration:.1f}s")
+
+            # Emit completion progress
+            if progress_callback:
+                progress_callback({
+                    "agent_id": "supervisor",
+                    "status": "completed",
+                    "message": f"v2 workflow completed in {total_duration:.1f}s",
+                    "step": "v2 workflow completed"
+                })
+
+            return output
+
+        except Exception as e:
+            logger.error(f"v2 workflow error: {str(e)}")
+            if progress_callback:
+                progress_callback({
+                    "agent_id": "supervisor",
+                    "status": "error",
+                    "message": f"v2 workflow error: {str(e)}",
+                    "step": "v2 workflow error"
+                })
+            return SupervisorOutput(
+                answer=f"Error processing query with v2 workflow: {str(e)}",
+                agents_used=[],
+                citations=[],
+                steps=["Error occurred during v2 workflow execution"],
+                confidence_score=0.0
+            )
+
+    def _process_legacy(
+        self,
+        input_data: SupervisorInput,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+    ) -> SupervisorOutput:
+        """
+        Legacy orchestration (direct agent calling)
+
+        Kept for backward compatibility. Use v2 workflow by default.
+
+        Args:
+            input_data: SupervisorInput with query
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            SupervisorOutput with aggregated response
+        """
+        try:
+            logger.info(f"Supervisor processing query (legacy): {input_data.query}")
 
             steps = []
             agents_used = []
@@ -118,7 +222,7 @@ Always:
                 progress_callback,
                 agent_id="supervisor",
                 status="running",
-                message="Analyzing query and orchestrating agents",
+                message="Analyzing query and orchestrating agents (legacy)",
                 step="Supervisor started"
             )
 
@@ -464,7 +568,7 @@ Always:
             return output
 
         except Exception as e:
-            logger.error(f"Supervisor Agent error: {str(e)}")
+            logger.error(f"Supervisor Agent error (legacy): {str(e)}")
             self._emit_progress(
                 progress_callback,
                 agent_id="supervisor",
@@ -476,7 +580,7 @@ Always:
                 answer=f"Error processing query: {str(e)}",
                 agents_used=[],
                 citations=[],
-                steps=["Error occurred during processing"],
+                steps=["Error occurred during legacy processing"],
                 confidence_score=0.0
             )
 

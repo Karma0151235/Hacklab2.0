@@ -1,14 +1,13 @@
 """
-Financial Agent for Market Intelligence
-Calculates 10+ key financial metrics from PDF data and provides CoT analysis
+Financial Agent V2 - Tool-Based Metric Calculation
+Extracts financial data from context and uses deterministic tools for calculations
+Never hallucinates values - only calculates from extracted data
 """
 
-from typing import Dict, Any, Optional
-import sys
-from pathlib import Path
+from typing import Dict, Any, Optional, Tuple
+from datetime import datetime
+import json
 import re
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import openai
 
@@ -16,8 +15,11 @@ from agents.schemas import (
     FinancialAgentInput,
     FinancialAgentOutput,
     FinancialMetrics,
+    FinancialAgentRouting,
+    ExtractedFinancialData,
 )
 from agents.config import AgentConfig
+from agents.tools.financial_metrics import FinancialMetricsCalculator, MetricStatus, MetricResult
 from etl.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -25,315 +27,342 @@ logger = get_logger(__name__)
 
 class FinancialAgent:
     """
-    Financial Agent for calculating and analyzing financial metrics
+    Financial Analysis Agent using Tool-Based Calculations
 
-    System Prompt:
-    You are the Financial Agent.
-
-    Process PDFs or structured data from ETL/Postgres to calculate key financial metrics.
-
-    Key metrics to extract and calculate (≥10):
-
-    Liquidity Ratios:
-    - Current Ratio
-    - Quick Ratio
-
-    Solvency Ratios:
-    - Debt-to-Equity
-    - Interest Coverage
-
-    Profitability Ratios:
-    - Net Profit Margin
-    - Return on Assets (ROA)
-    - Return on Equity (ROE)
-
-    Efficiency Ratios:
-    - Asset Turnover
-    - Inventory Turnover
-
-    Growth Indicators:
-    - Revenue Growth YoY
-    - EPS Growth
-
-    Output feeds both Supervisor and Alert agents.
+    Process:
+    1. Extract financial figures from RAG context using LLM
+    2. Validate extracted data
+    3. Use FinancialMetricsCalculator tools for all metric calculations
+    4. Skip metrics that cannot be calculated (never hallucinate)
+    5. Generate structured analysis with extracted values and calculations
+    6. Determine routing (complete/partial/skip)
     """
 
-    SYSTEM_PROMPT = """You are the Financial Agent for market intelligence.
+    SYSTEM_PROMPT = """You are the Financial Data Extraction Agent.
 
 Your role:
-1. Extract financial data from context (tables, text)
-2. Calculate key financial metrics:
-   - Liquidity Ratios (Current Ratio, Quick Ratio)
-   - Solvency Ratios (Debt-to-Equity, Interest Coverage)
-   - Profitability Ratios (Net Profit Margin, ROA, ROE, Gross Profit Margin, Operating Profit Margin)
-   - Efficiency Ratios (Asset Turnover, Inventory Turnover)
-   - Growth Indicators (Revenue Growth YoY, EPS Growth)
-3. Apply Chain-of-Thought reasoning to analyze trends
-4. Provide evidence-based analysis with source references
+1. Extract specific financial figures from the provided context
+2. Extract ONLY values that are explicitly stated in the text
+3. NEVER estimate or infer financial figures
+4. Identify the currency (RM, USD, etc.)
+5. Extract dates/periods when available
+6. Flag any inconsistencies in the data
 
-Always show your calculation steps and assumptions."""
+Return a JSON object with:
+{
+  "extracted_values": {
+    "revenue": number or null,
+    "net_profit": number or null,
+    "net_income": number or null,
+    "gross_profit": number or null,
+    "operating_income": number or null,
+    "operating_profit": number or null,
+    "cost_of_goods_sold": number or null,
+    "current_assets": number or null,
+    "total_assets": number or null,
+    "current_liabilities": number or null,
+    "total_debt": number or null,
+    "equity": number or null,
+    "inventory": number or null,
+    "accounts_receivable": number or null,
+    "interest_expense": number or null,
+    "shares_outstanding": number or null,
+    "previous_revenue": number or null,
+    "previous_net_income": number or null,
+    "previous_eps": number or null
+  },
+  "period": "string (e.g. 'Q1 2025', 'FY2024')",
+  "currency": "string (e.g. 'RM', 'USD')",
+  "confidence": number (0.0-1.0),
+  "data_quality_issues": ["string", ...]
+}
+
+Important:
+- If a value is not explicitly stated, return null (NOT zero)
+- If you are uncertain about a value, mark confidence lower and note the issue
+- Only include extracted_values that have explicit support in the text
+- List any ambiguities or inconsistencies in data_quality_issues"""
 
     def __init__(self):
-        """Initialize Financial Agent"""
-        self.config = AgentConfig
-
-        # Initialize OpenRouter client
+        """Initialize Financial Agent with OpenRouter client and calculator"""
         self.client = openai.OpenAI(
-            api_key=self.config.OPENROUTER_API_KEY,
-            base_url=self.config.OPENROUTER_BASE_URL,
-            timeout=self.config.OPENROUTER_TIMEOUT_SECONDS,
-            max_retries=self.config.OPENROUTER_MAX_RETRIES,
+            api_key=AgentConfig.OPENROUTER_API_KEY,
+            base_url="https://openrouter.ai/api/v1"
         )
-
-        logger.info("Financial Agent initialized")
+        self.model = AgentConfig.GLM_4_5_MODEL
+        self.calculator = FinancialMetricsCalculator()
 
     def analyze(self, input_data: FinancialAgentInput) -> FinancialAgentOutput:
         """
-        Analyze financial data and calculate metrics
+        Analyze financial data using tool-based calculations.
 
-        Args:
-            input_data: FinancialAgentInput with query and context
-
-        Returns:
-            FinancialAgentOutput with calculated metrics and analysis
+        Process:
+        1. Extract financial figures from context
+        2. Validate extracted data
+        3. Calculate metrics using tools
+        4. Generate analysis
+        5. Return output with routing decision
         """
         try:
-            logger.info(f"Financial Agent analyzing: {input_data.query}")
+            logger.info(f"Starting financial analysis for query: {input_data.query[:80]}...")
 
-            # Extract financial data from context using LLM
-            financial_data = self._extract_financial_data(input_data)
+            # Step 1: Extract financial data from context
+            extracted_data = self._extract_financial_data_with_validation(input_data)
 
-            # Calculate metrics
-            metrics = self._calculate_metrics(financial_data)
+            logger.debug(f"Extracted {len(extracted_data.extracted_values)} financial figures")
 
-            # Generate analysis with CoT reasoning
-            analysis = self._generate_analysis(input_data.query, financial_data, metrics)
+            # Step 2: Calculate metrics using tools
+            metrics, metric_results = self.calculator.calculate_all_available(
+                extracted_data.extracted_values
+            )
 
-            # Determine source
-            source = self._extract_source(input_data.context)
+            # Step 3: Generate analysis
+            analysis = self._generate_structured_analysis(
+                query=input_data.query,
+                extracted_data=extracted_data,
+                metrics=metrics,
+                metric_results=metric_results
+            )
 
+            # Step 4: Create output
             output = FinancialAgentOutput(
                 metrics=metrics,
-                source=source,
+                source=extracted_data.extraction_status,
                 analysis=analysis
             )
 
-            logger.info("Financial Agent completed analysis")
+            logger.info(f"Financial analysis complete - {len([m for m in metrics.dict().values() if m])} metrics calculated")
+
             return output
 
         except Exception as e:
-            logger.error(f"Financial Agent error: {str(e)}")
+            logger.error(f"Financial analysis failed: {str(e)}")
+            # Return empty metrics with error message
             return FinancialAgentOutput(
                 metrics=FinancialMetrics(),
-                source="Unknown",
-                analysis=f"Error analyzing financial data: {str(e)}"
+                source="error",
+                analysis=f"Financial analysis failed: {str(e)}"
             )
 
-    def _extract_financial_data(self, input_data: FinancialAgentInput) -> Dict[str, Any]:
-        """Extract financial data from context using LLM"""
+    def _extract_financial_data_with_validation(
+        self, input_data: FinancialAgentInput
+    ) -> ExtractedFinancialData:
+        """
+        Extract and validate financial data from RAG context.
+
+        Uses LLM to identify explicit financial figures in the context.
+        Never estimates or hallucинates values.
+
+        Returns:
+            ExtractedFinancialData with extracted values and quality assessment
+        """
         try:
-            context_str = str(input_data.context) if input_data.context else "No context provided"
+            # Prepare context for extraction
+            context = input_data.context or {}
+            rag_output = context.get('rag_output')
 
-            prompt = f"""Extract financial data from the following context to calculate financial metrics.
+            if not rag_output:
+                return ExtractedFinancialData(
+                    extracted_values={},
+                    missing_fields=[],
+                    data_quality=0.0,
+                    extraction_confidence=0.0,
+                    extraction_status="error",
+                    extraction_errors=["No RAG context provided"]
+                )
 
-Context:
-{context_str}
+            # Build extraction prompt
+            context_text = rag_output.get('summary', '') if isinstance(rag_output, dict) else rag_output.summary
 
-Query: {input_data.query}
+            extraction_prompt = f"""Extract financial figures from the following text:
 
-Extract the following data (if available):
-1. Revenue (current period and previous period)
-2. Net Profit / Profit for Period
-3. Gross Profit
-4. Operating Profit
-5. Total Assets
-6. Current Assets
-7. Total Equity
-8. Total Liabilities
-9. Current Liabilities
-10. Total Debt
-11. Inventory
-12. Interest Expense
-13. Earnings Per Share (EPS) - current and previous
-14. Number of shares outstanding
+{context_text}
 
-Format your response as JSON with these keys.
-Use null for unavailable values.
-Include the currency if mentioned."""
+Return valid JSON only, no explanations."""
 
+            # Call LLM for extraction
             response = self.client.chat.completions.create(
-                model=self.config.GLM_4_5_MODEL,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": self.SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": extraction_prompt}
                 ],
-                temperature=0.0,  # Deterministic for data extraction
-                max_tokens=2000,
+                temperature=0.0,  # Deterministic extraction
+                max_tokens=1000,
                 extra_body={"reasoning": {"enabled": True}}
             )
 
-            content = response.choices[0].message.content
+            response_text = response.choices[0].message.content
 
             # Parse JSON response
-            import json
-            try:
-                # Extract JSON from response (handle markdown code blocks)
-                if "```json" in content:
-                    json_str = content.split("```json")[1].split("```")[0].strip()
-                elif "```" in content:
-                    json_str = content.split("```")[1].split("```")[0].strip()
-                else:
-                    json_str = content.strip()
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if not json_match:
+                logger.warning(f"Could not extract JSON from LLM response: {response_text[:200]}")
+                return ExtractedFinancialData(
+                    extracted_values={},
+                    extraction_status="error",
+                    extraction_errors=["Failed to parse LLM response"]
+                )
 
-                financial_data = json.loads(json_str)
-                return financial_data
-            except:
-                logger.warning("Failed to parse financial data as JSON")
-                return {}
+            extraction_result = json.loads(json_match.group())
 
-        except Exception as e:
-            logger.error(f"Error extracting financial data: {str(e)}")
-            return {}
+            # Validate extracted values
+            extracted_values = {}
+            for key, value in extraction_result.get('extracted_values', {}).items():
+                if value is not None and isinstance(value, (int, float)):
+                    extracted_values[key] = float(value)
 
-    def _calculate_metrics(self, data: Dict[str, Any]) -> FinancialMetrics:
-        """Calculate financial metrics from extracted data"""
-        metrics = FinancialMetrics()
+            # Determine missing fields
+            expected_fields = [
+                'revenue', 'net_profit', 'net_income', 'gross_profit',
+                'operating_income', 'current_assets', 'total_assets',
+                'current_liabilities', 'total_debt', 'equity',
+                'inventory', 'interest_expense', 'shares_outstanding'
+            ]
+            missing_fields = [f for f in expected_fields if f not in extracted_values]
 
-        try:
-            # Helper to safely get numeric value
-            def get_num(key: str) -> Optional[float]:
-                val = data.get(key)
-                if val is None or val == "null":
-                    return None
-                try:
-                    return float(val)
-                except:
-                    return None
+            # Calculate data quality
+            completeness = (len(extracted_values) / len(expected_fields)) if expected_fields else 0
+            confidence = float(extraction_result.get('confidence', 0.5))
+            data_quality = (completeness * 0.6) + (confidence * 0.4)
 
-            # Extract values
-            revenue = get_num("Revenue")
-            revenue_prev = get_num("Revenue_previous")
-            net_profit = get_num("Net Profit")
-            gross_profit = get_num("Gross Profit")
-            operating_profit = get_num("Operating Profit")
-            total_assets = get_num("Total Assets")
-            current_assets = get_num("Current Assets")
-            total_equity = get_num("Total Equity")
-            total_liabilities = get_num("Total Liabilities")
-            current_liabilities = get_num("Current Liabilities")
-            total_debt = get_num("Total Debt")
-            inventory = get_num("Inventory")
-            interest_expense = get_num("Interest Expense")
-            eps = get_num("Earnings Per Share")
-            eps_prev = get_num("Earnings Per Share_previous")
-
-            # Liquidity Ratios
-            if current_assets and current_liabilities and current_liabilities != 0:
-                metrics.current_ratio = round(current_assets / current_liabilities, 2)
-
-            if current_assets and inventory and current_liabilities and current_liabilities != 0:
-                metrics.quick_ratio = round((current_assets - inventory) / current_liabilities, 2)
-
-            # Solvency Ratios
-            if total_debt and total_equity and total_equity != 0:
-                metrics.debt_to_equity = round(total_debt / total_equity, 2)
-
-            if operating_profit and interest_expense and interest_expense != 0:
-                metrics.interest_coverage = round(operating_profit / interest_expense, 2)
-
-            # Profitability Ratios
-            if net_profit and revenue and revenue != 0:
-                metrics.net_profit_margin = round((net_profit / revenue) * 100, 2)
-
-            if gross_profit and revenue and revenue != 0:
-                metrics.gross_profit_margin = round((gross_profit / revenue) * 100, 2)
-
-            if operating_profit and revenue and revenue != 0:
-                metrics.operating_profit_margin = round((operating_profit / revenue) * 100, 2)
-
-            if net_profit and total_assets and total_assets != 0:
-                metrics.return_on_assets = round((net_profit / total_assets) * 100, 2)
-
-            if net_profit and total_equity and total_equity != 0:
-                metrics.return_on_equity = round((net_profit / total_equity) * 100, 2)
-
-            # Efficiency Ratios
-            if revenue and total_assets and total_assets != 0:
-                metrics.asset_turnover = round(revenue / total_assets, 2)
-
-            if revenue and inventory and inventory != 0:
-                # Using revenue as proxy for COGS if not available
-                metrics.inventory_turnover = round(revenue / inventory, 2)
-
-            # Growth Indicators
-            if revenue and revenue_prev and revenue_prev != 0:
-                metrics.revenue_growth_yoy = round(((revenue - revenue_prev) / revenue_prev) * 100, 2)
-
-            if eps and eps_prev and eps_prev != 0:
-                metrics.eps_growth = round(((eps - eps_prev) / eps_prev) * 100, 2)
-
-            # Additional Metrics
-            if eps:
-                metrics.earnings_per_share = round(eps, 2)
-
-            logger.info(f"Calculated {sum(1 for k, v in metrics.dict().items() if v is not None)} metrics")
-
-        except Exception as e:
-            logger.error(f"Error calculating metrics: {str(e)}")
-
-        return metrics
-
-    def _generate_analysis(self, query: str, data: Dict, metrics: FinancialMetrics) -> str:
-        """Generate financial analysis with CoT reasoning"""
-        try:
-            metrics_dict = {k: v for k, v in metrics.dict().items() if v is not None}
-
-            prompt = f"""Based on the extracted financial data and calculated metrics, provide a comprehensive financial analysis using Chain-of-Thought reasoning.
-
-Query: {query}
-
-Extracted Financial Data:
-{data}
-
-Calculated Metrics:
-{metrics_dict}
-
-Provide:
-1. Step-by-step analysis of key metrics
-2. Assessment of financial health (liquidity, solvency, profitability)
-3. Identification of trends or concerns
-4. Actionable insights
-
-Be specific and reference exact figures."""
-
-            response = self.client.chat.completions.create(
-                model=self.config.GLM_4_5_MODEL,
-                messages=[
-                    {"role": "system", "content": self.SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=self.config.TEMPERATURE,
-                max_tokens=2000,
-                extra_body={"reasoning": {"enabled": True}}
+            return ExtractedFinancialData(
+                extracted_values=extracted_values,
+                missing_fields=missing_fields,
+                data_quality=data_quality,
+                extraction_confidence=confidence,
+                extraction_status="success",
+                extraction_errors=extraction_result.get('data_quality_issues', [])
             )
 
-            analysis = response.choices[0].message.content
-            return analysis
+        except Exception as e:
+            logger.error(f"Data extraction failed: {str(e)}")
+            return ExtractedFinancialData(
+                extracted_values={},
+                extraction_status="error",
+                extraction_errors=[str(e)]
+            )
+
+    def _generate_structured_analysis(
+        self,
+        query: str,
+        extracted_data: ExtractedFinancialData,
+        metrics: FinancialMetrics,
+        metric_results: Dict[str, MetricResult]
+    ) -> str:
+        """
+        Generate structured analysis using only extracted and calculated values.
+
+        Shows:
+        - Extracted figures with sources
+        - Calculated metrics with formulas
+        - Interpretations based on benchmarks
+        - Missing data and limitations
+        """
+        try:
+            analysis_parts = []
+
+            # Header
+            analysis_parts.append("## Financial Analysis Report\n")
+
+            # Extracted Data Summary
+            if extracted_data.extracted_values:
+                analysis_parts.append("### Extracted Financial Data\n")
+                for key, value in extracted_data.extracted_values.items():
+                    analysis_parts.append(f"- {key}: RM {value:,.2f}")
+                analysis_parts.append("")
+
+            # Data Quality Notes
+            if extracted_data.extraction_errors:
+                analysis_parts.append("### Data Quality Notes\n")
+                for error in extracted_data.extraction_errors:
+                    analysis_parts.append(f"- {error}")
+                analysis_parts.append("")
+
+            # Calculated Metrics
+            calculated_metrics = [k for k, v in metric_results.items() if v.status == MetricStatus.SUCCESS]
+            if calculated_metrics:
+                analysis_parts.append("### Calculated Metrics\n")
+                for metric_name in calculated_metrics:
+                    result = metric_results[metric_name]
+                    if result.value is not None:
+                        analysis_parts.append(f"- **{metric_name}**: {result.value:.2f}")
+                        if result.interpretation:
+                            analysis_parts.append(f"  - Interpretation: {result.interpretation}")
+                        if result.benchmark:
+                            analysis_parts.append(f"  - Benchmark: {result.benchmark:.2f}")
+                analysis_parts.append("")
+
+            # Missing Metrics
+            skipped_metrics = [k for k, v in metric_results.items() if v.status == MetricStatus.INSUFFICIENT_DATA]
+            if skipped_metrics:
+                analysis_parts.append("### Metrics Not Calculated (Insufficient Data)\n")
+                for metric_name in skipped_metrics:
+                    analysis_parts.append(f"- {metric_name}")
+                analysis_parts.append("")
+
+            # Key Insights
+            analysis_parts.append("### Key Insights\n")
+            if len(calculated_metrics) > 0:
+                analysis_parts.append(f"- Successfully calculated {len(calculated_metrics)} financial metrics")
+            if extracted_data.missing_fields:
+                analysis_parts.append(f"- {len(extracted_data.missing_fields)} data fields were not found in the source")
+            if extracted_data.data_quality < 0.5:
+                analysis_parts.append("- Data completeness is low; consider requesting full financial statements")
+
+            analysis_parts.append("")
+
+            # Limitations
+            analysis_parts.append("### Limitations\n")
+            analysis_parts.append("- Only metrics derived from explicitly extracted data are reported")
+            analysis_parts.append("- No estimates or inferred values are included")
+            if extracted_data.extraction_confidence < 0.8:
+                analysis_parts.append("- Low extraction confidence; verify source data")
+
+            return "\n".join(analysis_parts)
 
         except Exception as e:
-            logger.error(f"Error generating analysis: {str(e)}")
-            return f"Analysis generation failed: {str(e)}"
+            logger.error(f"Analysis generation failed: {str(e)}")
+            return f"Error generating analysis: {str(e)}"
 
-    def _extract_source(self, context: Optional[Dict[str, Any]]) -> str:
-        """Extract source reference from context"""
-        if not context:
-            return "Unknown"
+    def route(self, output: FinancialAgentOutput) -> FinancialAgentRouting:
+        """
+        Route financial analysis results based on completeness.
 
-        # Try to extract filename from metadata
-        if isinstance(context, dict):
-            if "metadata" in context:
-                metadata = context["metadata"]
-                if isinstance(metadata, list) and len(metadata) > 0:
-                    return metadata[0].get("filename", "Unknown")
+        Determines:
+        - Status: complete, partial, skip
+        - Whether to proceed with Alert Agent
+        - Recommended next step
+        """
+        # Count calculated metrics
+        metrics_dict = output.metrics.dict()
+        calculated_metrics = [k for k, v in metrics_dict.items() if v is not None]
+        metrics_count = len(calculated_metrics)
 
-        return "Context provided"
+        # Determine status
+        if metrics_count >= 8:
+            status = "complete"
+            should_continue = True
+            recommendation = "analyze_fully"
+        elif metrics_count >= 3:
+            status = "partial"
+            should_continue = True
+            recommendation = "partial_analysis"
+        else:
+            status = "skip"
+            should_continue = False
+            recommendation = "skip_to_alerts_only"
+
+        # Identify which metrics were calculated
+        metrics_calculated = [k for k, v in metrics_dict.items() if v is not None]
+        metrics_missing = [k for k, v in metrics_dict.items() if v is None]
+
+        return FinancialAgentRouting(
+            status=status,
+            reason=f"Calculated {metrics_count} out of {len(metrics_dict)} available metrics",
+            should_continue_pipeline=should_continue,
+            metrics_available=metrics_count,
+            metrics_calculated=metrics_calculated,
+            metrics_missing=metrics_missing,
+            recommended_next_step=recommendation
+        )
