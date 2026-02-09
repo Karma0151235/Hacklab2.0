@@ -10,17 +10,17 @@
 
 :root {
   /* ========== Base Colors - Deep Dark Backgrounds ========== */
-  --color-bg-primary: #0a0e14;
-  --color-bg-secondary: #0f1419;
+  --color-bg-primary: #0b0f15;
+  --color-bg-secondary: #111820;
   --color-bg-tertiary: #151a20;
-  --color-bg-elevated: #1a1f26;
+  --color-bg-elevated: #1e2530;
 
   /* ========== Text Colors - Visual Hierarchy ========== */
-  --color-text-primary: #e6edf3;   /* High contrast for headers only */
-  --color-text-secondary: #8b949e; /* Standard body text - readable gray */
-  --color-text-tertiary: #6e7681;  /* Meta info, timestamps - darker gray */
+  --color-text-primary: #eef2f7;   /* High contrast for headers only */
+  --color-text-secondary: #9da5ae; /* Standard body text - readable gray */
+  --color-text-tertiary: #8590a0;  /* Meta info, timestamps - darker gray */
   --color-text-accent: #00d9ff;
-  --color-text-dim: #484f58;       /* Very subtle text */
+  --color-text-dim: #5d6570;       /* Very subtle text */
 
   /* ========== Accent Colors - Cyan/Blue Theme ========== */
   --color-accent-primary: #00d9ff;    /* Bright cyan */
@@ -39,8 +39,8 @@
   --color-alert-low: #58a6ff;
 
   /* ========== Borders with Subtle Glow ========== */
-  --color-border-primary: #30363d;    /* Distinct but subtle border */
-  --color-border-secondary: #21262d;  /* Softer border */
+  --color-border-primary: #3a424c;    /* Distinct but subtle border */
+  --color-border-secondary: #2a3038;  /* Softer border */
   --color-border-accent: #00d9ff;
 
   /* ========== Chart Colors ========== */
@@ -64,6 +64,8 @@
   --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.6);
   --shadow-glow: 0 0 25px rgba(0, 217, 255, 0.1);
   --shadow-glow-strong: 0 0 40px rgba(0, 217, 255, 0.3);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 1px rgba(0, 217, 255, 0.05);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 217, 255, 0.08);
   --radius: 0.75rem;
 
   /* Shadcn/UI mappings */
@@ -151,14 +153,47 @@ h6 { font-size: 0.75rem; font-weight: 600; }  /* 12px */
   border: 1px solid var(--color-border-primary);
   box-shadow: var(--shadow-sm);
   transition: all 0.3s ease;
-  padding: var(--spacing-md); /* Compact padding (16px) */
+  padding: var(--spacing-lg); /* Increased padding (24px) */
   border-radius: var(--radius);
 }
 
 .card-bg:hover {
   border-color: var(--color-border-accent);
   box-shadow: var(--shadow-glow);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
+}
+
+/* Premium card with gradient bg, subtle top-line accent, smooth shadow transitions */
+.card-premium {
+  background: linear-gradient(to bottom right, var(--color-bg-tertiary), var(--color-bg-secondary));
+  border: 1px solid var(--color-border-primary);
+  box-shadow: var(--shadow-card);
+  border-radius: var(--radius);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-premium::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--color-accent-primary), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.card-premium:hover {
+  border-color: var(--color-accent-primary);
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+.card-premium:hover::before {
+  opacity: 0.3;
 }
 
 /* ========== Button Styles ========== */
@@ -263,10 +298,10 @@ h6 { font-size: 0.75rem; font-weight: 600; }  /* 12px */
 /* ========== Label & Metric Utilities ========== */
 .label {
   font-size: 0.75rem;  /* 12px */
-  font-weight: 500;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--color-text-tertiary);  /* Muted gray */
+  color: var(--color-text-secondary);  /* More readable */
 }
 
 .metric-lg {
@@ -292,7 +327,7 @@ h6 { font-size: 0.75rem; font-weight: 600; }  /* 12px */
 
 /* ========== Utility Classes ========== */
 .text-muted { color: var(--color-text-secondary); }
-.text-subtle { color: var(--color-text-tertiary); }
+.text-subtle { color: var(--color-text-tertiary); } /* Now brighter with new value */
 
 .gradient-text {
   background: linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary));

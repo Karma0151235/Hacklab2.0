@@ -40,7 +40,7 @@ def save_articles_to_json(articles, filename):
 async def search_company_news(
     company: str,
     sources: list = None,
-    start_date: str = "2024-01-01",
+    start_date: str = "2025-01-01",
     end_date: str = None,
     max_per_source: int = 20
 ):

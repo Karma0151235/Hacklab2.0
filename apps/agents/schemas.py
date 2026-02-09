@@ -235,10 +235,11 @@ class SupervisorOutput(BaseModel):
 
 class IntentClassification(BaseModel):
     """Intent classification results from IntentClassifier"""
-    primary_intent: str = Field(..., description="Main intent: financial_analysis, risk_assessment, trend_analysis, information_retrieval")
+    primary_intent: str = Field(..., description="Main intent: financial_analysis, risk_assessment, trend_analysis, information_retrieval, sentiment_analysis")
     secondary_intents: List[str] = Field(default_factory=list, description="Other detected intents")
-    required_agents: List[str] = Field(..., description="Agents that must run: rag, financial, alert")
+    required_agents: List[str] = Field(..., description="Agents that must run: rag, financial, alert, sentiment")
     optional_agents: List[str] = Field(default_factory=list, description="Agents that could enhance response")
+    company_name: Optional[str] = Field(default=None, description="Extracted company name from query")
     data_quality_requirements: Dict[str, float] = Field(default_factory=dict, description="Min confidence scores, chunk counts")
     priority_level: str = Field(default="normal", description="critical, high, normal, low")
     confidence: float = Field(ge=0.0, le=1.0, description="Classification confidence")
@@ -308,6 +309,10 @@ class WorkflowState(BaseModel):
 class AgentStateV2(BaseModel):
     """Enhanced state for V2 workflow with intent classification and routing"""
     query: str
+
+    # Extracted query context
+    company_name: Optional[str] = None
+    fetch_latest_news: bool = False
 
     # Intent classification
     intent: Optional[IntentClassification] = None

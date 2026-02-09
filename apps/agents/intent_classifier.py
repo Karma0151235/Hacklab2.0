@@ -48,6 +48,14 @@ class IntentClassifier:
         'forecast': ['forecast', 'predict', 'prediction', 'outlook', 'projections']
     }
 
+    SENTIMENT_KEYWORDS = {
+        'sentiment': ['sentiment', 'sentiments', 'market sentiment', 'investor sentiment'],
+        'perception': ['perception', 'opinion', 'public opinion', 'market opinion'],
+        'news': ['news', 'headlines', 'articles', 'media', 'press', 'coverage'],
+        'scrape': ['scrap', 'scrape', 'scraping', 'fetch news', 'latest news', 'web search'],
+        'mood': ['mood', 'feeling', 'outlook', 'bullish', 'bearish'],
+    }
+
     INFORMATION_KEYWORDS = {
         'summary': ['summary', 'summarize', 'overview', 'overview', 'brief'],
         'details': ['details', 'detail', 'information', 'data', 'facts'],
@@ -101,7 +109,8 @@ class IntentClassifier:
             'financial_analysis': 0.0,
             'risk_assessment': 0.0,
             'trend_analysis': 0.0,
-            'information_retrieval': 0.0
+            'information_retrieval': 0.0,
+            'sentiment_analysis': 0.0,
         }
 
         # Count keyword matches for each intent
@@ -109,14 +118,16 @@ class IntentClassifier:
         risk_matches = sum(1 for keywords in self.RISK_KEYWORDS.values() for kw in keywords if kw in query_lower)
         trend_matches = sum(1 for keywords in self.TREND_KEYWORDS.values() for kw in keywords if kw in query_lower)
         info_matches = sum(1 for keywords in self.INFORMATION_KEYWORDS.values() for kw in keywords if kw in query_lower)
+        sentiment_matches = sum(1 for keywords in self.SENTIMENT_KEYWORDS.values() for kw in keywords if kw in query_lower)
 
         # Normalize scores
-        total_matches = financial_matches + risk_matches + trend_matches + info_matches
+        total_matches = financial_matches + risk_matches + trend_matches + info_matches + sentiment_matches
         if total_matches > 0:
             scores['financial_analysis'] = min(financial_matches / total_matches, 1.0)
             scores['risk_assessment'] = min(risk_matches / total_matches, 1.0)
             scores['trend_analysis'] = min(trend_matches / total_matches, 1.0)
             scores['information_retrieval'] = min(info_matches / total_matches, 1.0)
+            scores['sentiment_analysis'] = min(sentiment_matches / total_matches, 1.0)
 
         logger.debug(f"Keyword pattern scores: {scores}")
         return scores
@@ -135,20 +146,22 @@ class IntentClassifier:
         system_prompt = """You are an expert query analyzer for financial intelligence systems.
 
 Your task: Analyze the user's query and determine:
-1. Primary intent (one of: financial_analysis, risk_assessment, trend_analysis, information_retrieval)
+1. Primary intent (one of: financial_analysis, risk_assessment, trend_analysis, information_retrieval, sentiment_analysis)
 2. Secondary intents (if any)
-3. Required agents to answer this query (rag=context retrieval, financial=metrics calculation, alert=risk evaluation)
-4. Data quality requirements
+3. Required agents to answer this query (rag=context retrieval, financial=metrics calculation, alert=risk evaluation, sentiment=news sentiment analysis)
+4. The company name mentioned in the query (if any)
+5. Data quality requirements
 
-Return a JSON response with:
+Return ONLY a JSON object (no markdown, no explanation, no code fences):
 {
   "primary_intent": "string",
   "secondary_intents": ["string"],
-  "required_agents": ["rag", "financial", "alert"],
+  "required_agents": ["rag", "financial", "alert", "sentiment"],
   "optional_agents": ["string"],
-  "data_quality_requirements": {"min_confidence": 0.0-1.0, "min_chunks": integer},
+  "company_name": "string or null",
+  "data_quality_requirements": {"min_confidence": 0.0, "min_chunks": 2},
   "priority_level": "critical|high|normal|low",
-  "confidence": 0.0-1.0,
+  "confidence": 0.8,
   "reasoning": "string"
 }
 
@@ -157,11 +170,17 @@ Intent definitions:
 - risk_assessment: Query asks for risks, concerns, warnings, alerts, adverse conditions
 - trend_analysis: Query asks for comparisons, changes over time, forecasts
 - information_retrieval: Query asks for summaries, facts, listings, general information
+- sentiment_analysis: Query asks about sentiment, news, media perception, market mood, or requests scraping/fetching news
 
 Agent requirements:
 - rag: Always needed for context. Required for all queries.
 - financial: Needed if query involves financial metrics, calculations, or analysis
-- alert: Needed if query involves risk assessment, concerns, or alerting conditions"""
+- alert: Needed if query involves risk assessment, concerns, or alerting conditions
+- sentiment: Needed if query mentions sentiment, news, media, market mood, scraping, or public perception
+
+Company extraction:
+- Extract the company name from the query if mentioned (e.g. "Sunway", "Maybank", "Foodie Media Berhad")
+- Return null if no specific company is mentioned"""
 
         user_prompt = f"""Analyze this query and determine the required agents and data requirements:
 
@@ -172,8 +191,9 @@ Keyword pattern scores (for reference):
 - Risk assessment: {keyword_scores.get('risk_assessment', 0):.2f}
 - Trend analysis: {keyword_scores.get('trend_analysis', 0):.2f}
 - Information retrieval: {keyword_scores.get('information_retrieval', 0):.2f}
+- Sentiment analysis: {keyword_scores.get('sentiment_analysis', 0):.2f}
 
-Provide JSON response only, no explanations."""
+Return ONLY a valid JSON object, nothing else."""
 
         try:
             response = self.client.chat.completions.create(
@@ -183,21 +203,82 @@ Provide JSON response only, no explanations."""
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.1,  # Low temperature for consistency
-                max_tokens=500,
-                extra_body={"reasoning": {"enabled": True}}
+                max_tokens=1000,
             )
 
-            response_text = response.choices[0].message.content
+            response_text = response.choices[0].message.content or ""
 
-            # Parse JSON response
-            import json
-            import re
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if not json_match:
-                logger.warning(f"Could not extract JSON from LLM response: {response_text}")
+            # If content is empty, the model may have put everything in reasoning
+            if not response_text.strip():
+                logger.warning("LLM returned empty content for intent classification, using fallback")
                 return self._fallback_classification(query)
 
-            classification_dict = json.loads(json_match.group())
+            # Parse JSON response - try multiple strategies
+            import json
+            import re
+
+            classification_dict = None
+
+            # Strategy 1: Try parsing the whole response as JSON
+            try:
+                classification_dict = json.loads(response_text.strip())
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Strategy 2: Extract JSON from code fences
+            if classification_dict is None:
+                code_fence_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+                if code_fence_match:
+                    try:
+                        classification_dict = json.loads(code_fence_match.group(1))
+                    except json.JSONDecodeError:
+                        pass
+
+            # Strategy 3: Find the outermost balanced braces
+            if classification_dict is None:
+                brace_start = response_text.find('{')
+                if brace_start != -1:
+                    depth = 0
+                    for i in range(brace_start, len(response_text)):
+                        if response_text[i] == '{':
+                            depth += 1
+                        elif response_text[i] == '}':
+                            depth -= 1
+                            if depth == 0:
+                                try:
+                                    classification_dict = json.loads(response_text[brace_start:i+1])
+                                except json.JSONDecodeError:
+                                    pass
+                                break
+
+            # Strategy 4: Extract key fields from truncated/partial JSON via regex
+            if classification_dict is None:
+                logger.warning(f"JSON parsing failed, attempting partial field extraction from: {response_text[:200]}")
+                partial = {}
+                # Extract company_name
+                cn_match = re.search(r'"company_name"\s*:\s*"([^"]+)"', response_text)
+                if cn_match:
+                    partial['company_name'] = cn_match.group(1)
+                # Extract primary_intent
+                pi_match = re.search(r'"primary_intent"\s*:\s*"([^"]+)"', response_text)
+                if pi_match:
+                    partial['primary_intent'] = pi_match.group(1)
+                # Extract required_agents
+                ra_match = re.search(r'"required_agents"\s*:\s*\[([^\]]+)\]', response_text)
+                if ra_match:
+                    partial['required_agents'] = [a.strip().strip('"') for a in ra_match.group(1).split(',')]
+                # Extract confidence
+                conf_match = re.search(r'"confidence"\s*:\s*([\d.]+)', response_text)
+                if conf_match:
+                    partial['confidence'] = float(conf_match.group(1))
+
+                if partial.get('primary_intent'):
+                    classification_dict = partial
+                    logger.info(f"Recovered partial classification: intent={partial.get('primary_intent')}, company={partial.get('company_name')}")
+
+            if classification_dict is None:
+                logger.warning(f"Could not extract any classification from LLM response")
+                return self._fallback_classification(query)
 
             # Validate required fields
             primary_intent = classification_dict.get('primary_intent', 'information_retrieval')
@@ -212,6 +293,7 @@ Provide JSON response only, no explanations."""
                 secondary_intents=classification_dict.get('secondary_intents', []),
                 required_agents=required_agents,
                 optional_agents=classification_dict.get('optional_agents', []),
+                company_name=classification_dict.get('company_name'),
                 data_quality_requirements=classification_dict.get('data_quality_requirements', {
                     'min_confidence': 0.3,
                     'min_chunks': 2
@@ -224,6 +306,48 @@ Provide JSON response only, no explanations."""
         except Exception as e:
             logger.error(f"LLM classification failed: {str(e)}")
             return self._fallback_classification(query)
+
+    def _extract_company_name(self, query: str) -> Optional[str]:
+        """Extract company name from query using simple heuristics (case-insensitive)."""
+        # Common stop words that are NOT company names
+        stop_words = {
+            'what', 'how', 'when', 'where', 'why', 'show', 'tell', 'give', 'any',
+            'the', 'find', 'get', 'scrap', 'scrape', 'search', 'fetch', 'latest',
+            'news', 'and', 'is', 'are', 'was', 'were', 'has', 'have', 'with',
+            'from', 'that', 'this', 'about', 'me', 'on', 'for', 'of', 'create',
+            'short', 'specific', 'chat', 'title', 'words', 'user', 'message',
+            'return', 'only', 'text', 'sentiment', 'market', 'company', 'analysis',
+            'including', 'include', 'includes', 'especially', 'particularly',
+            'detailed', 'detail', 'details', 'also', 'please', 'can', 'could',
+            'would', 'should', 'their', 'its', 'my', 'your', 'some', 'all',
+            'do', 'does', 'did', 'will', 'shall', 'may', 'might',
+            'financial', 'financials', 'alert', 'alerts', 'risk', 'risks',
+            'performance', 'overview', 'summary', 'report', 'data',
+        }
+
+        # Pattern 1: "on/about/for <name> and ..."
+        patterns = [
+            r'(?:on|about|for|of|regarding)\s+(\w[\w\s]*?)(?:\s+and\s+|\s+tell\s+|\s+show\s+|\s+give\s+|$)',
+            r'(?:news|sentiment|analysis|financials|alerts)\s+(?:on|of|for|about)\s+(\w[\w\s]*?)(?:\s+and\s+|\s+tell\s+|$)',
+            r'(?:scrap|scrape|fetch)\s+(?:latest\s+)?(?:news\s+)?(?:on|for|about)\s+(\w[\w\s]*?)(?:\s+and\s+|\s+tell\s+|$)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                name = match.group(1).strip()
+                # Remove trailing stop words
+                words = name.split()
+                while words and words[-1].lower() in stop_words:
+                    words.pop()
+                # Remove leading stop words
+                while words and words[0].lower() in stop_words:
+                    words.pop(0)
+                name = ' '.join(words)
+                if name and name.lower() not in stop_words and len(name) > 1:
+                    # Title-case the extracted name
+                    return name.title()
+
+        return None
 
     def _fallback_classification(self, query: str) -> IntentClassification:
         """
@@ -247,11 +371,19 @@ Provide JSON response only, no explanations."""
         if keyword_scores.get('risk_assessment', 0) > 0.2:
             required_agents.append('alert')
 
+        # Add sentiment agent if query mentions sentiment/news keywords
+        if keyword_scores.get('sentiment_analysis', 0) > 0.2:
+            required_agents.append('sentiment')
+
+        # Extract company name
+        company_name = self._extract_company_name(query)
+
         return IntentClassification(
             primary_intent=primary_intent,
             secondary_intents=[],
             required_agents=required_agents,
             optional_agents=optional_agents,
+            company_name=company_name,
             data_quality_requirements={
                 'min_confidence': 0.3,
                 'min_chunks': 2

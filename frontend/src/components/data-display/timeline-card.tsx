@@ -61,7 +61,7 @@ export function TimelineCard({
             {showCompanyName && (
               <p className="mb-0.5 font-sans text-sm font-semibold text-text-secondary group-hover:text-text-primary transition-colors">
                 {filing.company_name}
-                <span className="ml-2 font-mono text-xs text-text-tertiary">
+                <span className="ml-2 font-mono text-xs text-text-secondary">
                   {filing.company_code}
                 </span>
               </p>
@@ -113,8 +113,8 @@ export function TimelineCard({
           {/* Tables Count */}
           {filing.tables_count > 0 && (
             <div className="flex items-center gap-1.5 rounded-md border border-border-secondary bg-bg-elevated px-2 py-0.5 transition-colors group-hover:border-border-accent/30">
-              <FileText className="h-3 w-3 text-text-tertiary group-hover:text-text-secondary" />
-              <span className="font-mono text-xs font-semibold text-text-tertiary group-hover:text-text-secondary">
+              <FileText className="h-3 w-3 text-text-secondary" />
+              <span className="font-mono text-xs font-semibold text-text-secondary">
                 {filing.tables_count} {filing.tables_count === 1 ? 'table' : 'tables'}
               </span>
             </div>

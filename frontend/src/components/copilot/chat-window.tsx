@@ -284,10 +284,10 @@ export function ChatWindow() {
               <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20">
                 <Sparkles className="h-6 w-6 text-cyan-400" />
               </div>
-              <h1 className="mb-2 text-xl font-semibold text-white">
+              <h1 className="mb-2 text-xl font-semibold text-text-primary">
                 FinIntel Copilot
               </h1>
-              <p className="mb-8 text-sm text-gray-400">
+              <p className="mb-8 text-sm text-text-secondary">
                 Ask about companies, filings, or financial insights
               </p>
               <div className="space-y-2">
@@ -298,7 +298,7 @@ export function ChatWindow() {
                       setInputValue(q);
                       inputRef.current?.focus();
                     }}
-                    className="block w-full rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2.5 text-left text-sm text-gray-300 transition-colors hover:border-cyan-500/50 hover:bg-gray-800"
+                    className="block w-full rounded-lg border border-border-primary bg-bg-tertiary px-4 py-2.5 text-left text-sm text-text-secondary transition-colors hover:border-cyan-500/50 hover:bg-bg-elevated"
                   >
                     {q}
                   </button>
@@ -324,14 +324,14 @@ export function ChatWindow() {
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-gray-800 bg-gray-900/50 p-3">
+      <div className="border-t border-border-primary bg-bg-secondary p-3">
         <div className="mx-auto max-w-3xl">
           {/* Web-search Toggle */}
           <div className="mb-2 flex items-center gap-2">
             <button
               onClick={() => setFetchLatestNews(!fetchLatestNews)}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                fetchLatestNews ? "bg-cyan-600" : "bg-gray-700"
+                fetchLatestNews ? "bg-cyan-600" : "bg-bg-elevated"
               }`}
               role="switch"
               aria-checked={fetchLatestNews}
@@ -345,15 +345,15 @@ export function ChatWindow() {
                 <Globe className="h-3 w-3" />
               </span>
             </button>
-            <span className="text-xs font-medium text-gray-300">
+            <span className="text-xs font-medium text-text-secondary">
               Web-search
             </span>
-            <span className="text-[10px] text-gray-500">
+            <span className="text-[10px] text-text-tertiary">
               {fetchLatestNews ? "Using live web search" : "Using cached news"}
             </span>
           </div>
 
-          <div className="flex items-end gap-2 rounded-xl border border-gray-700 bg-gray-800/80 p-2">
+          <div className="flex items-end gap-2 rounded-xl border border-border-primary bg-bg-elevated p-2">
             <textarea
               ref={inputRef}
               value={inputValue}
@@ -361,14 +361,14 @@ export function ChatWindow() {
               onKeyDown={handleKeyDown}
               placeholder="Ask about financials, filings, alerts..."
               rows={1}
-              className="flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-white placeholder-gray-500 outline-none"
+              className="flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-text-primary placeholder-text-tertiary outline-none"
               style={{ minHeight: "36px", maxHeight: "120px" }}
             />
             <div className="flex items-center gap-1">
               {messages.length > 0 && (
                 <button
                   onClick={handleDeleteChat}
-                  className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-300"
+                  className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-bg-elevated hover:text-text-secondary"
                   title="Delete chat"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -383,7 +383,7 @@ export function ChatWindow() {
               </button>
             </div>
           </div>
-          <p className="mt-2 text-center text-[10px] text-gray-600">
+          <p className="mt-2 text-center text-[10px] text-text-dim">
             FinIntel may produce inaccurate information
           </p>
         </div>

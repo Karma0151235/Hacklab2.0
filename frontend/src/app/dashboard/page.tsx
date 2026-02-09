@@ -43,7 +43,7 @@ async function DashboardContent() {
     .slice(0, 3)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Page Header */}
         <div className="mb-6">
           <h1 className="mb-1 font-sans text-2xl font-bold text-text-primary">
@@ -55,7 +55,7 @@ async function DashboardContent() {
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           <MetricCard
             label="Total Companies"
             value={totalCompanies}
@@ -77,7 +77,7 @@ async function DashboardContent() {
         </div>
 
                 {/* Quick Actions */}
-        <div className="rounded-lg border border-border-accent/20 bg-gradient-to-br from-bg-tertiary to-bg-secondary p-4">
+        <div className="rounded-lg border border-border-accent/20 bg-gradient-to-br from-bg-tertiary to-bg-secondary p-5">
           <h2 className="mb-3 font-sans text-lg font-bold text-text-primary">
             Quick Actions
           </h2>
@@ -105,7 +105,7 @@ async function DashboardContent() {
                 <h3 className="font-sans text-sm font-semibold text-text-primary group-hover:text-accent-primary">
                   Ask Copilot
                 </h3>
-                <p className="font-sans text-xs text-text-tertiary">
+                <p className="font-sans text-xs text-text-secondary">
                   Get AI-powered insights
                 </p>
               </div>
@@ -122,7 +122,7 @@ async function DashboardContent() {
                 <h3 className="font-sans text-sm font-semibold text-text-primary group-hover:text-accent-primary">
                   Browse Companies
                 </h3>
-                <p className="font-sans text-xs text-text-tertiary">
+                <p className="font-sans text-xs text-text-secondary">
                   View all monitored entities
                 </p>
               </div>
@@ -151,7 +151,7 @@ async function DashboardContent() {
                 <h3 className="font-sans text-sm font-semibold text-text-primary group-hover:text-accent-primary">
                   Upload Files
                 </h3>
-                <p className="font-sans text-xs text-text-tertiary">
+                <p className="font-sans text-xs text-text-secondary">
                   Ingest new documents
                 </p>
               </div>
@@ -160,7 +160,7 @@ async function DashboardContent() {
         </div>
 
         {/* Content Grid */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Recent Filings */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -200,7 +200,7 @@ async function DashboardContent() {
               {recentAlerts.length === 0 ? (
                 <div className="rounded-lg border border-border-primary bg-bg-secondary p-8 text-center">
                   <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-text-tertiary opacity-50" />
-                  <p className="font-sans text-sm text-text-tertiary">
+                  <p className="font-sans text-sm text-text-secondary">
                     No active alerts at this time
                   </p>
                 </div>

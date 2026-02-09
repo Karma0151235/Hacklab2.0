@@ -19,8 +19,8 @@ class AgentConfig:
     OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
     # Models via OpenRouter
-    GLM_4_5_MODEL = "openai/gpt-oss-safeguard-20b"  # GPT-OSS with reasoning support
-    GLM_4_7_MODEL = "openai/gpt-oss-safeguard-20b"  # Same model for consistency
+    GLM_4_5_MODEL = "openai/gpt-oss-20b"  # GPT-OSS with reasoning support
+    GLM_4_7_MODEL = "openai/gpt-oss-20b"  # Same model for consistency
 
     # OpenRouter client settings
     OPENROUTER_TIMEOUT_SECONDS = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "30"))

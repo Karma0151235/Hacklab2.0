@@ -67,9 +67,9 @@ export function AlertCard({
       <div
         className={cn(
           'absolute inset-y-0 left-0 w-1.5',
-          alert.severity === 'high' && 'bg-error',
-          alert.severity === 'medium' && 'bg-warning',
-          alert.severity === 'low' && 'bg-info'
+          alert.severity === 'high' && 'bg-error shadow-[0_0_8px_rgba(248,81,73,0.4)]',
+          alert.severity === 'medium' && 'bg-warning shadow-[0_0_8px_rgba(210,153,34,0.4)]',
+          alert.severity === 'low' && 'bg-info shadow-[0_0_8px_rgba(88,166,255,0.4)]'
         )}
       />
 
@@ -88,7 +88,7 @@ export function AlertCard({
                 <h3 className="font-sans text-base font-bold text-text-primary">
                   {alert.alert_type}
                 </h3>
-                <span className="font-mono text-xs text-text-tertiary">
+                <span className="font-mono text-xs text-text-secondary">
                   {alert.company_code}
                 </span>
               </div>
@@ -110,7 +110,7 @@ export function AlertCard({
             >
               {alert.severity}
             </span>
-            <span className="rounded-md border border-border-secondary bg-bg-elevated px-2 py-0.5 font-mono text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+            <span className="rounded-md border border-border-secondary bg-bg-elevated px-2 py-0.5 font-mono text-xs font-semibold uppercase tracking-wide text-text-secondary">
               {alert.status}
             </span>
           </div>
@@ -125,7 +125,7 @@ export function AlertCard({
         {alert.evidence.length > 0 && (
           <div className="mb-3 flex items-center gap-2">
             <div className="h-px flex-1 bg-border-secondary/50" />
-            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-text-secondary">
               {alert.evidence.length}{' '}
               {alert.evidence.length === 1 ? 'citation' : 'citations'}
             </span>
@@ -136,7 +136,7 @@ export function AlertCard({
         {/* Footer */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Timestamp */}
-          <time className="font-mono text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          <time className="font-mono text-xs font-semibold uppercase tracking-wider text-text-secondary">
             {format(new Date(alert.triggered_at), 'dd MMM yyyy, HH:mm')}
           </time>
 

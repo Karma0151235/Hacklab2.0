@@ -66,17 +66,50 @@ Focus on:
 
 Be objective and evidence-based. Cite specific phrases or facts that support your sentiment assessment."""
 
-    # Sentiment keywords for fallback analysis
+    # Sentiment keywords for fallback analysis (whole-word matched via regex)
     POSITIVE_KEYWORDS = [
-        "growth", "profit", "surge", "gain", "beat", "exceed", "strong",
-        "upgrade", "outperform", "record", "dividend", "expansion", "optimistic",
-        "bullish", "positive", "success", "improvement", "recovery"
+        "growth", "profit", "profits", "profitable", "profitability",
+        "surge", "surged", "surging", "gain", "gains", "gained",
+        "beat", "beats", "exceed", "exceeded", "exceeds",
+        "strong", "stronger", "strongest", "strength",
+        "upgrade", "upgraded", "outperform", "outperformed",
+        "record", "dividend", "dividends", "expansion", "expanding",
+        "optimistic", "optimism", "bullish", "positive",
+        "success", "successful", "improvement", "improved", "improving",
+        "recovery", "recovering", "recovered", "rebound", "rebounded",
+        "revenue", "earnings", "income", "acquisition", "acquire",
+        "investment", "invest", "investing", "investor",
+        "upside", "momentum", "boost", "boosted", "rally", "rallied",
+        "outpace", "robust", "resilient", "resilience",
+        "partnership", "collaboration", "innovation", "innovative",
+        "milestone", "award", "awarded", "approve", "approved",
+        "breakout", "breakthrough", "opportunity", "opportunities",
+        "higher", "increase", "increased", "rising", "risen", "rise",
     ]
-    
+
     NEGATIVE_KEYWORDS = [
-        "loss", "decline", "fall", "drop", "miss", "below", "weak",
-        "downgrade", "underperform", "concern", "risk", "warning", "cut",
-        "bearish", "negative", "challenge", "struggle", "restructuring"
+        "loss", "losses", "losing",
+        "decline", "declined", "declining", "decrease", "decreased",
+        "fall", "falls", "fallen", "falling",
+        "drop", "dropped", "dropping", "plunge", "plunged",
+        "miss", "missed", "misses", "below",
+        "weak", "weaker", "weakest", "weakness",
+        "downgrade", "downgraded", "underperform", "underperformed",
+        "concern", "concerns", "concerned",
+        "risk", "risks", "risky",
+        "warning", "warnings", "warned",
+        "bearish", "negative", "pessimistic",
+        "challenge", "challenges", "challenging",
+        "struggle", "struggles", "struggling",
+        "restructuring", "layoff", "layoffs", "retrenchment",
+        "default", "defaults", "defaulted",
+        "debt", "liabilities", "impairment", "impaired",
+        "slowdown", "slowing", "slowed", "contraction",
+        "lawsuit", "litigation", "penalty", "penalties", "fine", "fined",
+        "fraud", "scandal", "investigation",
+        "downside", "headwind", "headwinds", "volatility", "volatile",
+        "lower", "lowest", "shrink", "shrinking", "deficit",
+        "suspension", "suspended", "closure", "closed",
     ]
     
     def __init__(self):
@@ -96,52 +129,127 @@ Be objective and evidence-based. Cite specific phrases or facts that support you
     def analyze(self, input_data: SentimentAgentInput) -> SentimentAgentOutput:
         """
         Analyze sentiment from news articles and context.
-        
+
         Args:
             input_data: SentimentAgentInput with articles and context
-            
+
         Returns:
             SentimentAgentOutput with sentiment analysis results
         """
         try:
             logger.info(f"Sentiment Agent analyzing: {input_data.query}")
-            
+
             if not input_data.news_articles and not input_data.rag_context:
                 return self._empty_output("No content to analyze")
-            
-            # Prepare content for analysis
+
+            # Always compute keyword-based sentiment per article as baseline
+            article_scores = []
+            sentiment_by_source = {}
+            article_titles = []
+            for article in input_data.news_articles:
+                text = (article.title or "") + " " + (article.content or "")
+                score = self._quick_sentiment(text)
+                article_scores.append(score)
+                sentiment_by_source[article.source] = score
+                article_titles.append(article.title)
+                logger.debug(f"[sentiment] Article '{article.title[:60]}' content_len={len(article.content)} keyword_score={score:.2f}")
+
+            # Compute baseline keyword score from all articles
+            if article_scores:
+                keyword_avg_score = sum(article_scores) / len(article_scores)
+            else:
+                keyword_avg_score = 0.0
+
+            logger.info(f"[sentiment] Keyword baseline: avg={keyword_avg_score:.3f}, per_article={[round(s, 2) for s in article_scores]}")
+
+            # Prepare content for LLM analysis
             content = self._prepare_content(input_data)
-            
-            # Analyze using LLM
+
+            # Try LLM analysis
             sentiment_result = self._analyze_with_llm(
                 query=input_data.query,
                 content=content,
                 company_name=input_data.company_name
             )
-            
-            # Calculate sentiment by source
-            sentiment_by_source = {}
-            for article in input_data.news_articles:
-                article_sentiment = self._quick_sentiment(article.content)
-                sentiment_by_source[article.source] = article_sentiment
-            
+
+            llm_failed = sentiment_result.get("llm_failed", False)
+            llm_score = float(sentiment_result.get("score", 0.0) or 0.0)
+            llm_confidence = float(sentiment_result.get("confidence", 0.0) or 0.0)
+
+            logger.info(f"[sentiment] LLM result: failed={llm_failed}, score={llm_score:.2f}, confidence={llm_confidence:.2f}")
+
+            # Decision logic: prefer per-article keyword baseline when LLM is unreliable
+            if llm_failed:
+                # LLM returned empty/broken — use keyword baseline unconditionally
+                final_score = keyword_avg_score
+                final_confidence = 0.6 if keyword_avg_score != 0.0 else 0.3
+                logger.info(f"[sentiment] LLM failed, using keyword baseline: score={final_score:.2f}")
+            elif llm_score == 0.0 and abs(keyword_avg_score) > 0.2:
+                # LLM says neutral but keyword baseline has a clear signal —
+                # keyword baseline from actual article text is more trustworthy
+                # than a model that often returns empty or "no references found"
+                final_score = keyword_avg_score
+                final_confidence = 0.6
+                logger.info(f"[sentiment] LLM=0.0 but keywords={keyword_avg_score:.2f}, using keyword baseline")
+            elif llm_confidence >= 0.5 and llm_score != 0.0:
+                # LLM returned a meaningful score with decent confidence — trust it
+                final_score = llm_score
+                final_confidence = llm_confidence
+            else:
+                # Blend: average LLM and keyword scores when both are available
+                if keyword_avg_score != 0.0 and llm_score != 0.0:
+                    final_score = (llm_score + keyword_avg_score) / 2
+                    final_confidence = max(llm_confidence, 0.5)
+                elif keyword_avg_score != 0.0:
+                    final_score = keyword_avg_score
+                    final_confidence = 0.6
+                else:
+                    final_score = llm_score
+                    final_confidence = llm_confidence if llm_confidence > 0 else 0.5
+
+            # Determine sentiment label
+            if final_score > 0.15:
+                overall_sentiment = "positive"
+            elif final_score < -0.15:
+                overall_sentiment = "negative"
+            else:
+                overall_sentiment = "neutral"
+
+            # Clean company_sentiments
+            raw_cs = sentiment_result.get("company_sentiments", {})
+            company_sentiments = {}
+            for k, v in (raw_cs or {}).items():
+                if v is not None:
+                    try:
+                        company_sentiments[str(k)] = float(v)
+                    except (ValueError, TypeError):
+                        pass
+            # Add company from keyword analysis if missing
+            if input_data.company_name and input_data.company_name not in company_sentiments:
+                company_sentiments[input_data.company_name] = final_score
+
+            # Build summary if LLM didn't provide one
+            summary = sentiment_result.get("summary", "") or ""
+            if not summary and article_titles:
+                summary = f"Analysis of {len(input_data.news_articles)} articles about {input_data.company_name or 'the company'}. Headlines include: {'; '.join(article_titles[:3])}."
+
             output = SentimentAgentOutput(
-                overall_sentiment=sentiment_result.get("sentiment", "neutral"),
-                sentiment_score=sentiment_result.get("score", 0.0),
-                confidence=sentiment_result.get("confidence", 0.5),
+                overall_sentiment=overall_sentiment,
+                sentiment_score=max(-1.0, min(1.0, final_score)),
+                confidence=max(0.0, min(1.0, final_confidence)),
                 sentiment_by_source=sentiment_by_source,
-                key_topics=sentiment_result.get("key_topics", []),
-                key_phrases=sentiment_result.get("key_phrases", []),
-                trend=sentiment_result.get("trend", "stable"),
-                trend_explanation=sentiment_result.get("trend_explanation", ""),
-                company_sentiments=sentiment_result.get("company_sentiments", {}),
-                summary=sentiment_result.get("summary", ""),
+                key_topics=sentiment_result.get("key_topics", []) or [],
+                key_phrases=sentiment_result.get("key_phrases", []) or [],
+                trend=sentiment_result.get("trend", "stable") or "stable",
+                trend_explanation=sentiment_result.get("trend_explanation", "") or "",
+                company_sentiments=company_sentiments,
+                summary=summary,
                 articles_analyzed=len(input_data.news_articles),
             )
-            
+
             logger.info(f"Sentiment Agent result: {output.overall_sentiment} ({output.sentiment_score:.2f})")
             return output
-            
+
         except Exception as e:
             logger.error(f"Sentiment Agent error: {str(e)}")
             return self._empty_output(f"Analysis error: {str(e)}")
@@ -202,12 +310,20 @@ Provide your analysis as JSON:
                 ],
                 temperature=0.0,
                 max_tokens=1000,
-                extra_body={"reasoning": {"enabled": True}}
             )
-            
-            content = response.choices[0].message.content
-            
-            # Parse JSON response
+
+            content = response.choices[0].message.content or ""
+
+            logger.info(f"[sentiment_llm] Raw response length: {len(content)}, first 200 chars: {content[:200]}")
+
+            if not content.strip():
+                logger.warning("LLM returned empty content for sentiment analysis — signalling llm_failed")
+                # Return a signal dict so analyze() knows to use per-article keyword baseline
+                return {"llm_failed": True, "score": 0.0, "confidence": 0.0,
+                        "key_topics": [], "key_phrases": [], "trend": "stable",
+                        "trend_explanation": "", "company_sentiments": {}, "summary": ""}
+
+            # Parse JSON response - try multiple strategies
             try:
                 if "```json" in content:
                     json_str = content.split("```json")[1].split("```")[0].strip()
@@ -215,16 +331,34 @@ Provide your analysis as JSON:
                     json_str = content.split("```")[1].split("```")[0].strip()
                 else:
                     json_str = content.strip()
-                
+
                 return json.loads(json_str)
-                
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse LLM response: {e}")
+
+            except json.JSONDecodeError:
+                # Try balanced brace extraction
+                brace_start = content.find('{')
+                if brace_start != -1:
+                    depth = 0
+                    for i in range(brace_start, len(content)):
+                        if content[i] == '{':
+                            depth += 1
+                        elif content[i] == '}':
+                            depth -= 1
+                            if depth == 0:
+                                try:
+                                    return json.loads(content[brace_start:i+1])
+                                except json.JSONDecodeError:
+                                    break
+                                break
+
+                logger.warning(f"Failed to parse LLM sentiment response, using fallback")
                 return self._fallback_analysis(content)
                 
         except Exception as e:
             logger.error(f"LLM analysis error: {str(e)}")
-            return self._fallback_analysis(content if 'content' in locals() else "")
+            return {"llm_failed": True, "score": 0.0, "confidence": 0.0,
+                    "key_topics": [], "key_phrases": [], "trend": "stable",
+                    "trend_explanation": f"LLM error: {str(e)}", "company_sentiments": {}, "summary": ""}
     
     def _fallback_analysis(self, content: str) -> Dict[str, Any]:
         """Fallback keyword-based sentiment analysis"""
@@ -250,19 +384,27 @@ Provide your analysis as JSON:
         }
     
     def _quick_sentiment(self, text: str) -> float:
-        """Quick keyword-based sentiment scoring"""
+        """Quick keyword-based sentiment scoring using whole-word matching"""
         if not text:
             return 0.0
-            
+
         text_lower = text.lower()
-        
-        positive_count = sum(1 for word in self.POSITIVE_KEYWORDS if word in text_lower)
-        negative_count = sum(1 for word in self.NEGATIVE_KEYWORDS if word in text_lower)
-        
+
+        # Use word-boundary regex to avoid substring false positives
+        # e.g. "risk" should not match inside "brisk"
+        positive_count = sum(
+            1 for word in self.POSITIVE_KEYWORDS
+            if re.search(r'\b' + re.escape(word) + r'\b', text_lower)
+        )
+        negative_count = sum(
+            1 for word in self.NEGATIVE_KEYWORDS
+            if re.search(r'\b' + re.escape(word) + r'\b', text_lower)
+        )
+
         total = positive_count + negative_count
         if total == 0:
             return 0.0
-            
+
         # Score from -1 to 1
         score = (positive_count - negative_count) / total
         return max(-1.0, min(1.0, score))

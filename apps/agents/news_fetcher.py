@@ -192,10 +192,23 @@ def fetch_news_for_company(
             try:
                 articles = future.result(timeout=scrape_timeout_seconds)
                 logger.info(f"[news_fetcher] Scraped {len(articles)} articles for '{company_name}'")
-                return articles
+                if articles:
+                    return articles
             except FuturesTimeoutError:
                 logger.warning(f"[news_fetcher] Scraping timeout after {scrape_timeout_seconds}s for '{company_name}'")
-                return []
+
+            # Scraping returned 0 or timed out — articles may have been stored during scraping,
+            # so re-check Supabase cache
+            try:
+                raw_articles = get_articles_by_company(company_name, limit=limit)
+                if raw_articles:
+                    articles = _parse_supabase_articles(raw_articles)
+                    logger.info(f"[news_fetcher] Post-scrape cache hit: {len(articles)} articles for '{company_name}'")
+                    return articles
+            except Exception as cache_err:
+                logger.warning(f"[news_fetcher] Post-scrape cache read failed: {cache_err}")
+
+            return []
     except Exception as e:
         logger.error(f"[news_fetcher] Scraping exception: {e}")
         return []

@@ -28,6 +28,7 @@ class CopilotQueryRequest(BaseModel):
     query: str
     session_id: Optional[str] = None
     stream: bool = False  # Future support for streaming
+    fetch_latest_news: bool = False  # When True, force scrape fresh news
 
 class CopilotHealthResponse(BaseModel):
     """Response model for health check"""
@@ -187,7 +188,8 @@ async def query_copilot(request: CopilotQueryRequest):
         # Execute the workflow with v2 interface
         output = await flow.arun(
             query=request.query,
-            session_id=request.session_id
+            session_id=request.session_id,
+            fetch_latest_news=request.fetch_latest_news,
         )
 
         logger.info(f"Query processed successfully. Agents used: {output.agents_used}")
@@ -220,7 +222,8 @@ async def start_copilot_job(request: CopilotQueryRequest):
             output = await flow.arun(
                 query=request.query,
                 session_id=request.session_id,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                fetch_latest_news=request.fetch_latest_news,
             )
             _copilot_jobs[job_id]["result"] = output.dict()
             _copilot_jobs[job_id]["status"] = "completed"

@@ -70,7 +70,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
             </div>
             <div>
               <div className="text-xs font-bold gradient-text">FinIntel</div>
-              <div className="text-xs text-subtle">AmBank</div>
+              <div className="text-xs text-text-secondary">AmBank</div>
             </div>
           </div>
         )}
@@ -91,11 +91,11 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
         {navigation.map((section) => (
           <div key={section.title} className="mb-6">
             {!collapsed && (
-              <div className="px-3 mb-2 text-xs font-semibold text-subtle uppercase tracking-wider">
+              <div className="px-3 mb-2 text-xs font-semibold text-text-secondary uppercase tracking-wider">
                 {section.title}
               </div>
             )}
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {section.items.map((item) => {
                 const isActive = pathname === item.href
                 const Icon = item.icon
@@ -105,7 +105,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
                     key={item.name}
                     href={item.href}
                     className={cn(
-                      'flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-all group relative min-h-11',
+                      'flex items-center gap-2.5 px-3 py-3 rounded-lg transition-all group relative min-h-11',
                       isActive
                         ? 'bg-[var(--color-bg-elevated)] text-[var(--color-accent-primary)] border-l-2 border-[var(--color-accent-primary)]'
                         : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)] hover:text-[var(--color-text-primary)]'
@@ -141,7 +141,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
           {!collapsed && (
             <div>
               <div className="text-xs font-medium text-[var(--color-text-primary)]">All Systems Operational</div>
-              <div className="text-xs text-subtle">Last checked: 2m ago</div>
+              <div className="text-xs text-text-secondary">Last checked: 2m ago</div>
             </div>
           )}
         </div>

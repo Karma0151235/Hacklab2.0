@@ -90,12 +90,12 @@ export function DataTable<T extends Record<string, any>>({
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-border-secondary bg-bg-tertiary">
+            <tr className="border-b border-border-secondary bg-bg-elevated">
               {columns.map((column) => (
                 <th
                   key={column.key}
                   className={cn(
-                    'px-6 py-4 text-left font-mono text-xs font-bold uppercase tracking-wider text-text-tertiary',
+                    'px-6 py-4 text-left font-mono text-xs font-bold uppercase tracking-wider text-text-secondary',
                     column.sortable && 'cursor-pointer select-none hover:text-accent-primary',
                     column.className
                   )}
@@ -148,7 +148,7 @@ export function DataTable<T extends Record<string, any>>({
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-border-secondary bg-bg-tertiary px-6 py-4">
-          <div className="font-mono text-sm text-text-tertiary">
+          <div className="font-mono text-sm text-text-secondary">
             Showing{' '}
             <span className="font-semibold text-text-primary">
               {startIndex + 1}

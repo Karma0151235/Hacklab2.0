@@ -78,12 +78,12 @@ export function ChatSidebar() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950 border-r border-gray-800/50">
+    <div className="flex h-full flex-col bg-gradient-to-b from-bg-secondary to-bg-primary border-r border-border-primary">
       {/* Header */}
-      <div className="border-b border-gray-800/50 p-3 space-y-2">
+      <div className="border-b border-border-primary p-3 space-y-2">
         <div className="flex items-center gap-2 px-1 mb-2">
           <div className="h-2 w-2 rounded-full bg-cyan-500/60"></div>
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-text-secondary">
             Chats
           </h2>
         </div>
@@ -101,9 +101,9 @@ export function ChatSidebar() {
         <div className="space-y-1.5 p-2.5">
           {chatList.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <MessageSquare className="h-8 w-8 text-gray-600 mb-3" />
-              <p className="text-xs text-gray-500">No chats yet</p>
-              <p className="text-[10px] text-gray-600">
+              <MessageSquare className="h-8 w-8 text-text-dim mb-3" />
+              <p className="text-xs text-text-tertiary">No chats yet</p>
+              <p className="text-[10px] text-text-dim">
                 Create one to get started
               </p>
             </div>
@@ -121,14 +121,14 @@ export function ChatSidebar() {
                 >
                   {editingId === chat.id ? (
                     // Edit mode
-                    <div className="flex items-center gap-2 rounded-lg bg-gray-800/60 p-2.5 border border-gray-700/50">
+                    <div className="flex items-center gap-2 rounded-lg bg-bg-elevated p-2.5 border border-border-secondary">
                       <input
                         autoFocus
                         value={editingTitle}
                         onChange={(e) => setEditingTitle(e.target.value)}
                         onKeyDown={(e) => handleKeyDown(e, chat.id)}
                         onBlur={() => handleSaveEdit(chat.id)}
-                        className="flex-1 bg-transparent text-sm text-gray-100 outline-none font-medium"
+                        className="flex-1 bg-transparent text-sm text-text-primary outline-none font-medium"
                         placeholder="Chat title..."
                       />
                     </div>
@@ -140,7 +140,7 @@ export function ChatSidebar() {
                         "w-full text-left rounded-lg px-3 py-2.5 transition-all duration-200 relative group cursor-pointer",
                         currentChatId === chat.id
                           ? "bg-gradient-to-r from-cyan-600/20 to-blue-600/20 border border-cyan-500/30 shadow-lg shadow-cyan-500/10"
-                          : "hover:bg-gray-800/40 border border-transparent",
+                          : "hover:bg-bg-elevated border border-transparent",
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -150,7 +150,7 @@ export function ChatSidebar() {
                               "h-4 w-4 rounded flex items-center justify-center flex-shrink-0 transition-all duration-200",
                               currentChatId === chat.id
                                 ? "bg-cyan-500/30 text-cyan-400"
-                                : "bg-gray-700/50 text-gray-400 group-hover:bg-gray-600/50",
+                                : "bg-bg-elevated text-text-tertiary group-hover:bg-bg-elevated",
                             )}
                           >
                             <MessageSquare className="h-3 w-3" />
@@ -160,7 +160,7 @@ export function ChatSidebar() {
                               "truncate font-semibold text-[12.5px] leading-4 tracking-tight transition-colors duration-200",
                               currentChatId === chat.id
                                 ? "text-cyan-300"
-                                : "text-gray-300 group-hover:text-gray-100",
+                                : "text-text-secondary group-hover:text-text-primary",
                             )}
                             title={chat.title}
                           >
@@ -168,7 +168,7 @@ export function ChatSidebar() {
                           </p>
                         </div>
                         <p
-                          className="text-[10px] text-gray-600"
+                          className="text-[10px] text-text-dim"
                           suppressHydrationWarning
                         >
                           {formatDate(chat.updatedAt)}
@@ -183,7 +183,7 @@ export function ChatSidebar() {
                                 menuOpen === chat.id ? null : chat.id,
                               );
                             }}
-                            className="rounded-md p-1.5 hover:bg-gray-700/50 text-gray-500 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                            className="rounded-md p-1.5 hover:bg-bg-elevated text-text-dim hover:text-text-secondary opacity-0 group-hover:opacity-100 transition-all duration-200"
                           >
                             <MoreVertical className="h-4 w-4" />
                           </button>
@@ -196,14 +196,14 @@ export function ChatSidebar() {
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.95, y: -10 }}
                                 transition={{ duration: 0.15 }}
-                                className="absolute right-0 top-full mt-2 z-50 rounded-lg bg-gray-800 border border-gray-700 shadow-xl overflow-hidden min-w-[140px]"
+                                className="absolute right-0 top-full mt-2 z-50 rounded-lg bg-gray-900/95 backdrop-blur-md border border-border-primary shadow-xl overflow-hidden min-w-[140px]"
                               >
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleStartEdit(chat);
                                   }}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/80 transition-colors"
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-tertiary transition-colors"
                                 >
                                   <Edit2 className="h-3.5 w-3.5" />
                                   Rename
@@ -213,7 +213,7 @@ export function ChatSidebar() {
                                     e.stopPropagation();
                                     setConfirmDelete(chat.id);
                                   }}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors border-t border-gray-700"
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors border-t border-border-secondary"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                   Delete
@@ -265,8 +265,8 @@ export function ChatSidebar() {
       </div>
 
       {/* Footer info */}
-      <div className="border-t border-gray-800/50 bg-gradient-to-t from-gray-950 to-transparent p-3">
-        <p className="text-[11px] text-gray-500 font-medium">
+      <div className="border-t border-border-primary bg-gradient-to-t from-bg-primary to-transparent p-3">
+        <p className="text-[11px] text-text-dim font-medium">
           {chatList.length} {chatList.length === 1 ? "chat" : "chats"}
         </p>
       </div>

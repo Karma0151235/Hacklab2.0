@@ -84,7 +84,7 @@ export function MetricCard({
       <div className="relative flex items-start justify-between p-6">
         <div className="flex-1">
           {/* Label - Muted for hierarchy */}
-          <p className="mb-1 font-sans text-xs font-medium uppercase tracking-wider text-text-tertiary">
+          <p className="mb-1 font-sans text-xs font-medium uppercase tracking-wider text-text-secondary">
             {label}
           </p>
 
@@ -125,7 +125,7 @@ export function MetricCard({
               >
                 {Math.abs(trend.value)}%
               </span>
-              <span className="font-sans text-xs font-medium text-text-tertiary">
+              <span className="font-sans text-xs font-medium text-text-secondary">
                 {trend.label || 'vs last period'}
               </span>
             </div>
@@ -136,7 +136,7 @@ export function MetricCard({
         {Icon && (
           <div
             className={cn(
-              'flex h-10 w-10 items-center justify-center rounded-lg',
+              'flex h-11 w-11 items-center justify-center rounded-xl ring-1 ring-white/5',
               styles.iconBg
             )}
           >

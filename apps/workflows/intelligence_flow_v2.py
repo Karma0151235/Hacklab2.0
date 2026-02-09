@@ -53,6 +53,7 @@ class IntelligenceFlowV2:
         workflow.add_node("financial_analysis", self._financial_analysis_node)
         workflow.add_node("alert_evaluation", self._alert_evaluation_node)
         workflow.add_node("sentiment_analysis", self._sentiment_analysis_node)
+        workflow.add_node("sentiment_analysis_low_quality", self._sentiment_analysis_node)
         workflow.add_node("response_synthesis", self._response_synthesis_node)
         workflow.add_node("rag_only_synthesis", self._rag_only_synthesis_node)
 
@@ -69,15 +70,17 @@ class IntelligenceFlowV2:
             self._route_after_quality_check,
             {
                 "high_quality": "financial_analysis",
-                "low_quality": "rag_only_synthesis"
+                "low_quality": "sentiment_analysis_low_quality"
             }
         )
 
-        # Sequential execution (not true parallel to avoid LangGraph concurrent update errors)
-        # financial → alert → sentiment → synthesis
+        # High-quality path: financial → alert → sentiment → synthesis
         workflow.add_edge("financial_analysis", "alert_evaluation")
         workflow.add_edge("alert_evaluation", "sentiment_analysis")
         workflow.add_edge("sentiment_analysis", "response_synthesis")
+
+        # Low-quality path: sentiment → rag_only_synthesis
+        workflow.add_edge("sentiment_analysis_low_quality", "rag_only_synthesis")
 
         # Terminal edges
         workflow.add_edge("response_synthesis", END)
@@ -113,7 +116,12 @@ class IntelligenceFlowV2:
                     "step": "Intent classification completed"
                 })
 
-            return state.model_copy(update={"intent": intent, "steps": steps})
+            # Extract company_name from intent classification
+            company_name = state.company_name or intent.company_name
+            if company_name:
+                logger.info(f"Extracted company name: {company_name}")
+
+            return state.model_copy(update={"intent": intent, "steps": steps, "company_name": company_name})
         except Exception as e:
             logger.error(f"Intent classification failed: {str(e)}")
             steps = list(state.steps) if state.steps else []
@@ -130,7 +138,10 @@ class IntelligenceFlowV2:
                 })
 
             logger.info("Starting RAG retrieval...")
-            rag_output = self.rag_agent.retrieve(RAGQuery(query=state.query))
+            rag_output = self.rag_agent.retrieve(RAGQuery(
+                query=state.query,
+                company_name=state.company_name,
+            ))
             steps = list(state.steps) if state.steps else []
             steps.append(f"Retrieved {len(rag_output.text_chunks)} text chunks, {len(rag_output.table_chunks)} table chunks")
             logger.info(f"RAG retrieval complete - Found {len(rag_output.text_chunks)} text chunks")
@@ -283,15 +294,52 @@ class IntelligenceFlowV2:
                 state.progress_callback({"agent_id": "sentiment", "status": "running", "message": "Analyzing market sentiment..."})
 
             logger.info("Starting sentiment analysis...")
-            try:
-                news_articles = fetch_news_for_company("Malaysia", limit=10)
-            except Exception as e:
-                logger.warning(f"Could not fetch news: {str(e)}")
-                news_articles = []
+
+            company_name = state.company_name
+            if not company_name:
+                logger.warning("No company name extracted — skipping news fetch for sentiment")
+
+            news_articles = []
+            if company_name:
+                if state.fetch_latest_news:
+                    # User toggled web-search ON: scrape in background to populate DB, then read from cache
+                    logger.info(f"[sentiment] fetch_latest_news=True, scraping fresh news for '{company_name}'")
+                    try:
+                        from agents.news_fetcher import _scrape_articles_sync
+                        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+                        with ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(_scrape_articles_sync, company_name, 10)
+                            try:
+                                scraped = future.result(timeout=90)
+                                if scraped:
+                                    news_articles = scraped
+                                    logger.info(f"[sentiment] Scraping returned {len(scraped)} articles")
+                            except FuturesTimeoutError:
+                                logger.warning(f"Scraping timed out for '{company_name}', checking cache")
+                    except Exception as e:
+                        logger.warning(f"Fresh scraping failed: {str(e)}")
+
+                    # Always check Supabase cache (scraping stores there, so even after timeout articles may exist)
+                    if not news_articles:
+                        logger.info(f"[sentiment] Reading from Supabase cache for '{company_name}'")
+                        try:
+                            news_articles = fetch_news_for_company(company_name, limit=10)
+                        except Exception as e2:
+                            logger.warning(f"Cache read failed: {str(e2)}")
+                            news_articles = []
+                else:
+                    # Normal path: Supabase cache first, scrape fallback
+                    try:
+                        news_articles = fetch_news_for_company(company_name, limit=10)
+                    except Exception as e:
+                        logger.warning(f"Could not fetch news: {str(e)}")
+                        news_articles = []
+
+            logger.info(f"[sentiment] Got {len(news_articles)} articles for '{company_name or 'N/A'}'")
 
             sentiment_input = SentimentAgentInput(
                 query=state.query,
-                company_name=None,
+                company_name=company_name,
                 news_articles=news_articles,
                 rag_context=state.rag_output
             )
@@ -497,11 +545,12 @@ class IntelligenceFlowV2:
 
     # ======================== PUBLIC INTERFACE ========================
 
-    def run(self, query: str, session_id: Optional[str] = None, progress_callback=None) -> Any:
+    def run(self, query: str, session_id: Optional[str] = None, progress_callback=None, fetch_latest_news: bool = False) -> Any:
         """Run the v2 workflow synchronously"""
         try:
             from agents.schemas import SupervisorOutput
-            initial_state = AgentStateV2(query=query, steps=[], session_id=session_id, progress_callback=progress_callback)
+            logger.info(f"Running workflow: fetch_latest_news={fetch_latest_news}, query={query[:80]}...")
+            initial_state = AgentStateV2(query=query, steps=[], session_id=session_id, progress_callback=progress_callback, fetch_latest_news=fetch_latest_news)
             final_state = self.workflow.invoke(initial_state)
 
             # Handle both dict and AgentStateV2 returns
@@ -535,18 +584,16 @@ class IntelligenceFlowV2:
                 confidence_score=0.0
             )
 
-    async def arun(self, query: str, session_id: Optional[str] = None, progress_callback=None) -> Any:
+    async def arun(self, query: str, session_id: Optional[str] = None, progress_callback=None, fetch_latest_news: bool = False) -> Any:
         """Run the v2 workflow asynchronously by executing in a thread pool"""
         import asyncio
         from concurrent.futures import ThreadPoolExecutor
+        from functools import partial
 
         # Use thread pool to allow async polling while workflow executes
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
             return await loop.run_in_executor(
                 executor,
-                self.run,
-                query,
-                session_id,
-                progress_callback
+                partial(self.run, query, session_id, progress_callback, fetch_latest_news),
             )

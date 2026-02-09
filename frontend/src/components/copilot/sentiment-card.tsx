@@ -48,10 +48,10 @@ export function SentimentCard({ sentiment }: SentimentCardProps) {
   };
 
   return (
-    <div className="rounded-lg border border-blue-500/30 bg-blue-950/20 p-4 space-y-3">
+    <div className="rounded-lg border border-accent-secondary/30 bg-accent-secondary/5 p-4 space-y-3">
       {/* Header with title and sentiment badge */}
       <div className="flex items-start justify-between">
-        <h4 className="font-medium text-sm text-gray-100">Market Sentiment</h4>
+        <h4 className="font-medium text-sm text-text-primary">Market Sentiment</h4>
         <div
           className={cn(
             "px-2.5 py-1 rounded-full text-xs font-semibold border",
@@ -65,12 +65,12 @@ export function SentimentCard({ sentiment }: SentimentCardProps) {
       {/* Sentiment Score Bar */}
       <div className="space-y-1">
         <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-400">Score</span>
-          <span className="text-xs font-mono font-medium text-gray-300">
+          <span className="text-xs text-text-tertiary">Score</span>
+          <span className="text-xs font-mono font-medium text-text-secondary">
             {sentiment.sentiment_score.toFixed(2)}
           </span>
         </div>
-        <div className="h-2 w-full rounded-full bg-gray-800 overflow-hidden">
+        <div className="h-2 w-full rounded-full bg-bg-elevated overflow-hidden">
           <div
             className={cn(
               "h-full rounded-full transition-all duration-300",
@@ -84,26 +84,26 @@ export function SentimentCard({ sentiment }: SentimentCardProps) {
       {/* Confidence and Articles */}
       <div className="grid grid-cols-2 gap-3 pt-1">
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+          <div className="text-[10px] uppercase tracking-wide text-text-dim mb-1">
             Confidence
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="h-1.5 w-12 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-1.5 w-12 bg-bg-elevated rounded-full overflow-hidden">
               <div
                 className="h-full bg-blue-400 rounded-full"
                 style={{ width: `${sentiment.confidence * 100}%` }}
               />
             </div>
-            <span className="text-xs font-medium text-gray-300">
+            <span className="text-xs font-medium text-text-secondary">
               {Math.round(sentiment.confidence * 100)}%
             </span>
           </div>
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+          <div className="text-[10px] uppercase tracking-wide text-text-dim mb-1">
             Articles
           </div>
-          <div className="text-sm font-medium text-gray-300">
+          <div className="text-sm font-medium text-text-secondary">
             {sentiment.articles_analyzed}
           </div>
         </div>
@@ -111,8 +111,8 @@ export function SentimentCard({ sentiment }: SentimentCardProps) {
 
       {/* Summary */}
       {sentiment.summary && (
-        <div className="rounded bg-gray-800/50 p-3 border border-gray-700">
-          <p className="text-xs leading-relaxed text-gray-300">
+        <div className="rounded bg-bg-tertiary p-3 border border-border-secondary">
+          <p className="text-xs leading-relaxed text-text-secondary">
             {sentiment.summary}
           </p>
         </div>
@@ -124,8 +124,8 @@ export function SentimentCard({ sentiment }: SentimentCardProps) {
           <div className="flex items-center gap-1.5">
             {getTrendIcon()}
             <div>
-              <span className="text-xs text-gray-500">Trend: </span>
-              <span className="text-xs font-medium text-gray-300 capitalize">
+              <span className="text-xs text-text-dim">Trend: </span>
+              <span className="text-xs font-medium text-text-secondary capitalize">
                 {sentiment.trend}
               </span>
             </div>
@@ -134,7 +134,7 @@ export function SentimentCard({ sentiment }: SentimentCardProps) {
       )}
 
       {sentiment.trend_explanation && (
-        <p className="text-xs text-gray-400 italic pt-1">
+        <p className="text-xs text-text-tertiary italic pt-1">
           {sentiment.trend_explanation}
         </p>
       )}

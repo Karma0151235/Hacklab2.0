@@ -11,7 +11,7 @@ export default function CopilotPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   return (
-    <div className="flex h-full w-full bg-gray-950">
+    <div className="flex h-full w-full bg-bg-primary">
       {/* Sidebar */}
       <motion.div
         initial={false}

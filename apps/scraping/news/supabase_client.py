@@ -96,6 +96,36 @@ def store_articles(articles: List[NewsArticle]) -> int:
     return stored_count
 
 
+def _company_search_variants(company: str) -> List[str]:
+    """
+    Generate search variants for a company name.
+    Strips common Malaysian suffixes like 'Berhad', 'Bhd', 'Holdings', 'Group'
+    so that 'Foodie Media Berhad' also matches articles mentioning just 'Foodie Media'.
+    """
+    import re
+    variants = [company.strip()]
+
+    # Strip trailing suffixes common in Malaysian company names
+    suffixes = r'\s+(?:Berhad|Bhd\.?|Holdings|Group|Corporation|Corp\.?|Inc\.?|Ltd\.?|Sdn\.?|International)\s*$'
+    shortened = re.sub(suffixes, '', company.strip(), flags=re.IGNORECASE).strip()
+    if shortened and shortened.lower() != company.strip().lower():
+        variants.append(shortened)
+        # Recurse once in case of double suffixes like "X Holdings Berhad"
+        shortened2 = re.sub(suffixes, '', shortened, flags=re.IGNORECASE).strip()
+        if shortened2 and shortened2.lower() != shortened.lower():
+            variants.append(shortened2)
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique = []
+    for v in variants:
+        key = v.lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(v)
+    return unique
+
+
 def get_articles_by_company(company: str, limit: int = 10) -> List[dict]:
     """Get articles mentioning a specific company"""
     client = get_supabase_client()
@@ -106,15 +136,21 @@ def get_articles_by_company(company: str, limit: int = 10) -> List[dict]:
     if not normalized:
         return []
 
-    normalized_upper = normalized.upper()
-    like_pattern = f"*{normalized}*"
+    # Build search variants (e.g. "Foodie Media Berhad" -> ["Foodie Media Berhad", "Foodie Media"])
+    variants = _company_search_variants(normalized)
+    logger.info(f"[supabase] Searching for company variants: {variants}")
 
-    or_filter = (
-        f"companies_mentioned.cs.{{{normalized}}},"
-        f"companies_mentioned.cs.{{{normalized_upper}}},"
-        f"content.ilike.{like_pattern},"
-        f"title.ilike.{like_pattern}"
-    )
+    # Build OR filter parts for each variant
+    filter_parts = []
+    for variant in variants:
+        variant_upper = variant.upper()
+        like_pat = f"*{variant}*"
+        filter_parts.append(f"companies_mentioned.cs.{{{variant}}}")
+        filter_parts.append(f"companies_mentioned.cs.{{{variant_upper}}}")
+        filter_parts.append(f"content.ilike.{like_pat}")
+        filter_parts.append(f"title.ilike.{like_pat}")
+
+    or_filter = ",".join(filter_parts)
 
     result = (
         client.from_("news_articles")
@@ -124,7 +160,8 @@ def get_articles_by_company(company: str, limit: int = 10) -> List[dict]:
         .limit(limit)
         .execute()
     )
-    
+
+    logger.info(f"[supabase] Found {len(result.data) if result.data else 0} articles for '{normalized}'")
     return result.data if result.data else []
 
 

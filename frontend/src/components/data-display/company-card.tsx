@@ -31,7 +31,7 @@ export function CompanyCard({ company, className, onAlertClick }: CompanyCardPro
       )}
     >
       {/* Top accent line */}
-      <div className="h-1 w-full bg-gradient-to-r from-accent-primary/0 via-accent-primary/50 to-accent-primary/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <div className="h-1 w-full bg-gradient-to-r from-accent-primary/0 via-accent-primary/50 to-accent-primary/0 opacity-30 transition-opacity duration-300 group-hover:opacity-100" />
 
       <div className="p-4">
         {/* Header */}
@@ -41,7 +41,7 @@ export function CompanyCard({ company, className, onAlertClick }: CompanyCardPro
             <span className="font-mono text-sm font-bold uppercase tracking-wider text-accent-primary">
               {company.ticker}
             </span>
-            <span className="font-mono text-xs text-text-tertiary">
+            <span className="font-mono text-xs text-text-secondary">
               {company.company_code}
             </span>
           </div>
@@ -74,8 +74,8 @@ export function CompanyCard({ company, className, onAlertClick }: CompanyCardPro
           {/* Filings */}
           <div className="rounded-md border border-border-secondary bg-bg-elevated p-2">
             <div className="mb-0.5 flex items-center gap-1">
-              <FileText className="h-3 w-3 text-text-tertiary" />
-              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              <FileText className="h-3 w-3 text-text-secondary" />
+              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-text-secondary">
                 Filings
               </p>
             </div>
@@ -100,8 +100,8 @@ export function CompanyCard({ company, className, onAlertClick }: CompanyCardPro
             )}
           >
             <div className="mb-0.5 flex items-center gap-1">
-              <AlertCircle className="h-3 w-3 text-text-tertiary" />
-              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+              <AlertCircle className="h-3 w-3 text-text-secondary" />
+              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-text-secondary">
                 Alerts
               </p>
             </div>
@@ -132,7 +132,7 @@ export function CompanyCard({ company, className, onAlertClick }: CompanyCardPro
         {/* Latest Filing Date */}
         {company.latest_filing_date && (
           <div className="flex items-center justify-between border-t border-border-secondary pt-2">
-            <span className="font-sans text-xs font-medium text-text-tertiary">
+            <span className="font-sans text-xs font-medium text-text-secondary">
               Latest Filing
             </span>
             <time className="font-mono text-xs font-semibold text-accent-primary">
