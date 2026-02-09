@@ -363,6 +363,37 @@ class FinancialResult(Base):
         return f"<FinancialResult {self.company_code} {self.quarter} - Revenue: {self.revenue}>"
 
 
+class GeneratedAlert(Base):
+    """Alerts generated from background monitoring"""
+    __tablename__ = "generated_alerts"
+
+    alert_id = Column(String(100), primary_key=True, index=True)
+    company_code = Column(String(10), ForeignKey("companies.company_code"), nullable=False, index=True)
+    company_name = Column(String(255), nullable=False)
+    severity = Column(String(10), nullable=False, index=True)  # high, medium, low
+    alert_type = Column(String(100), nullable=False, index=True)
+    reason = Column(Text, nullable=False)
+    metrics_data = Column(JSON)  # Store the metrics that triggered the alert
+    evidence = Column(JSON)  # Store evidence/citations
+    triggered_at = Column(DateTime, nullable=False, index=True, default=datetime.utcnow)
+    is_notified = Column(Boolean, default=False, index=True)  # Track if frontend was notified
+    notified_at = Column(DateTime)
+    status = Column(String(20), default="active", index=True)  # active, dismissed, resolved
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    # Relationships
+    company = relationship("Company", foreign_keys=[company_code])
+
+    __table_args__ = (
+        Index('idx_alert_company_severity', 'company_code', 'severity'),
+        Index('idx_alert_notified', 'is_notified', 'severity'),
+        Index('idx_alert_status_date', 'status', 'triggered_at'),
+    )
+
+    def __repr__(self):
+        return f"<GeneratedAlert {self.alert_id} {self.alert_type} - {self.company_code}>"
+
+
 # Create indexes
 def create_indexes():
     """Create additional indexes for performance"""

@@ -366,6 +366,14 @@ class IntelligenceFlowV2:
             # Calculate confidence
             confidence = state.rag_quality.quality_score if state.rag_quality else 0.5
 
+            # Extract HIGH severity alerts only (critical alerts)
+            critical_alerts = []
+            if state.alert_output and state.alert_output.alerts:
+                critical_alerts = [
+                    alert for alert in state.alert_output.alerts
+                    if alert.severity == "high"
+                ]
+
             # Create SupervisorOutput
             supervisor_output = SupervisorOutput(
                 answer=answer_text,
@@ -373,7 +381,8 @@ class IntelligenceFlowV2:
                 citations=citations,
                 steps=steps,
                 confidence_score=confidence,
-                sentiment=state.sentiment_output
+                sentiment=state.sentiment_output,
+                alerts=critical_alerts
             )
 
             steps.append("Response synthesis: complete")
@@ -389,13 +398,22 @@ class IntelligenceFlowV2:
             steps = list(state.steps) if state.steps else []
             steps.append(f"Response synthesis: error - {str(e)}")
 
+            # Extract HIGH severity alerts even on error
+            critical_alerts = []
+            if state.alert_output and state.alert_output.alerts:
+                critical_alerts = [
+                    alert for alert in state.alert_output.alerts
+                    if alert.severity == "high"
+                ]
+
             # Return error output as SupervisorOutput
             supervisor_output = SupervisorOutput(
                 answer=f"Response synthesis failed: {str(e)}",
                 agents_used=[],
                 citations=[],
                 steps=steps,
-                confidence_score=0.0
+                confidence_score=0.0,
+                alerts=critical_alerts
             )
             return state.model_copy(update={"supervisor_output": supervisor_output, "steps": steps})
 
@@ -439,6 +457,14 @@ class IntelligenceFlowV2:
                     )
                     citations.append(citation)
 
+            # Extract HIGH severity alerts only (critical alerts)
+            critical_alerts = []
+            if state.alert_output and state.alert_output.alerts:
+                critical_alerts = [
+                    alert for alert in state.alert_output.alerts
+                    if alert.severity == "high"
+                ]
+
             # Create SupervisorOutput
             supervisor_output = SupervisorOutput(
                 answer=answer_text,
@@ -446,7 +472,8 @@ class IntelligenceFlowV2:
                 citations=citations,
                 steps=steps,
                 confidence_score=rag_quality.quality_score if rag_quality else 0.5,
-                sentiment=state.sentiment_output
+                sentiment=state.sentiment_output,
+                alerts=critical_alerts
             )
 
             steps.append("RAG-only synthesis: complete (fast path)")

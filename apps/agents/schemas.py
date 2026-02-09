@@ -225,6 +225,7 @@ class SupervisorOutput(BaseModel):
     steps: List[str] = Field(..., description="Chain-of-Thought reasoning steps")
     table_data: Optional[Dict[str, Any]] = Field(default=None, description="Reconstructed table data")
     sentiment: Optional[SentimentAgentOutput] = Field(default=None, description="Sentiment analysis results")
+    alerts: List[Alert] = Field(default_factory=list, description="Critical alerts from AlertAgent (HIGH severity only)")
     confidence_score: float = Field(default=0.0, description="Overall confidence in response")
 
 

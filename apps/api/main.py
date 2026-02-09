@@ -7,7 +7,7 @@ import json
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from api.routes import pdf_ingestion, bursa_scraping, vectordb, copilot, filings, companies, news
+from api.routes import pdf_ingestion, bursa_scraping, vectordb, copilot, filings, companies, news, alerts
 from agents.config import AgentConfig
 from etl.logging_config import get_logger
 
@@ -68,6 +68,7 @@ app.include_router(copilot.router, prefix="/api/v1", tags=["Copilot"])
 app.include_router(filings.router, prefix="/api/v1", tags=["Filings"])
 app.include_router(companies.router, prefix="/api/v1", tags=["Companies"])
 app.include_router(news.router, prefix="/api/v1", tags=["News"])
+app.include_router(alerts.router, prefix="/api/v1", tags=["Alerts"])
 
 @app.get("/")
 async def root():
