@@ -5,8 +5,9 @@ import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { CompanyCard } from '@/components/data-display/company-card'
 import { DataTable } from '@/components/data-display/data-table'
-import { getCompanies } from '@/lib/api/companies'
-import { Company } from '@/lib/types/api'
+import { AlertDetailsModal } from '@/components/alerts/alert-details-modal'
+import { getCompanies, getCompanyAlerts } from '@/lib/api/companies'
+import { Company, Alert } from '@/lib/types/api'
 import { cn } from '@/lib/utils'
 
 type ViewMode = 'grid' | 'table'
@@ -17,6 +18,10 @@ export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedCompanyCode, setSelectedCompanyCode] = useState<string | null>(null)
+  const [selectedCompanyAlerts, setSelectedCompanyAlerts] = useState<Alert[]>([])
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(false)
 
   // Fetch companies from API
   useEffect(() => {
@@ -35,6 +40,29 @@ export default function CompaniesPage() {
     }
     fetchCompanies()
   }, [])
+
+  // Handle alert viewing
+  const handleViewAlerts = async (companyCode: string) => {
+    setSelectedCompanyCode(companyCode)
+    setIsLoadingAlerts(true)
+    try {
+      const result = await getCompanyAlerts(companyCode)
+      setSelectedCompanyAlerts(result.alerts || [])
+      // Open first alert by default if available
+      if (result.alerts && result.alerts.length > 0) {
+        setSelectedAlert(result.alerts[0])
+      }
+    } catch (err) {
+      console.error(`Failed to fetch alerts for ${companyCode}:`, err)
+      setSelectedCompanyAlerts([])
+    } finally {
+      setIsLoadingAlerts(false)
+    }
+  }
+
+  const handleCloseAlertModal = () => {
+    setSelectedAlert(null)
+  }
 
   // Filter companies based on search
   const filteredCompanies = useMemo(() => {
@@ -118,14 +146,24 @@ export default function CompaniesPage() {
       label: 'Alerts',
       sortable: true,
       render: (company: Company) => (
-        <span
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            if (company.alert_count > 0) {
+              handleViewAlerts(company.company_code)
+            }
+          }}
+          disabled={company.alert_count === 0}
           className={cn(
-            'font-mono font-semibold',
-            company.alert_count > 0 ? 'text-error' : 'text-text-tertiary'
+            'font-mono font-semibold rounded px-2 py-1 transition-colors',
+            company.alert_count > 0
+              ? 'text-error hover:bg-error/10 cursor-pointer'
+              : 'text-text-tertiary cursor-default'
           )}
         >
           {company.alert_count}
-        </span>
+        </button>
       ),
       className: 'text-center',
     },
@@ -249,7 +287,11 @@ export default function CompaniesPage() {
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredCompanies.map((company) => (
-              <CompanyCard key={company.company_code} company={company} />
+              <CompanyCard
+                key={company.company_code}
+                company={company}
+                onAlertClick={handleViewAlerts}
+              />
             ))}
           </div>
         ) : (
@@ -260,6 +302,85 @@ export default function CompaniesPage() {
             itemsPerPage={15}
           />
         )}
+
+        {/* Alerts Drawer/Modal - when no specific alert is selected, show list */}
+        {selectedCompanyCode && selectedCompanyAlerts.length > 0 && !selectedAlert && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm">
+            <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-border-secondary bg-bg-secondary shadow-2xl">
+              {/* Header */}
+              <div className="border-b border-border-secondary px-6 py-4 flex items-center justify-between">
+                <div>
+                  <h3 className="font-sans text-lg font-bold text-text-primary">
+                    Alerts for {companies.find(c => c.company_code === selectedCompanyCode)?.company_name}
+                  </h3>
+                  <p className="font-sans text-xs text-text-tertiary">
+                    {selectedCompanyAlerts.length} alert(s) found
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedCompanyCode(null)
+                    setSelectedCompanyAlerts([])
+                  }}
+                  className="rounded-lg p-2 hover:bg-bg-tertiary"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Alert List */}
+              <div className="max-h-[400px] overflow-y-auto p-4 space-y-2">
+                {isLoadingAlerts ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-accent-primary" />
+                  </div>
+                ) : (
+                  selectedCompanyAlerts.map((alert) => (
+                    <button
+                      key={alert.alert_id}
+                      onClick={() => setSelectedAlert(alert)}
+                      className={cn(
+                        'w-full text-left rounded-lg border p-3 transition-all hover:border-accent-primary/40',
+                        alert.severity === 'high' && 'border-error/30 bg-error/5 hover:bg-error/10',
+                        alert.severity === 'medium' && 'border-warning/30 bg-warning/5 hover:bg-warning/10',
+                        alert.severity === 'low' && 'border-info/30 bg-info/5 hover:bg-info/10',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-sans text-sm font-semibold text-text-primary truncate">
+                            {alert.alert_type}
+                          </p>
+                          <p className="font-sans text-xs text-text-tertiary truncate">
+                            {alert.reason}
+                          </p>
+                        </div>
+                        <span className={cn(
+                          'rounded px-2 py-1 text-xs font-semibold uppercase whitespace-nowrap',
+                          alert.severity === 'high' && 'bg-error/20 text-error',
+                          alert.severity === 'medium' && 'bg-warning/20 text-warning',
+                          alert.severity === 'low' && 'bg-info/20 text-info',
+                        )}>
+                          {alert.severity}
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Alert Details Modal */}
+        <AlertDetailsModal
+          isOpen={selectedAlert !== null}
+          onClose={handleCloseAlertModal}
+          alert={selectedAlert}
+          companyName={companies.find(c => c.company_code === selectedCompanyCode)?.company_name}
+        />
         </>
       )}
     </div>

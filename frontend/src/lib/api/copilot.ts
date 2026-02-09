@@ -77,7 +77,22 @@ export async function getCopilotResult(jobId: string): Promise<CopilotAnswer> {
     })),
     sentiment: data.sentiment as SentimentOutput | undefined,
     tables: [],
-    alerts: [],
+    alerts: (data.alerts || []).map((a: any) => ({
+      alert_id: a.alert_id,
+      company_code: a.company_code || "",
+      company_name: a.company_name || "Unknown",
+      severity: a.severity as "high" | "medium" | "low",
+      alert_type: a.alert_type,
+      triggered_at: a.triggered_at,
+      reason: a.reason,
+      evidence: (a.evidence || []).map((e: any) => ({
+        source: e.filename || e.source || "Unknown",
+        link: e.source_url || e.link || "#",
+        page: e.page_number || e.page,
+        excerpt: e.excerpt || "",
+      })),
+      status: "active" as const,
+    })),
   };
 }
 

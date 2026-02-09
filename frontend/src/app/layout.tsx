@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { JetBrains_Mono, IBM_Plex_Sans } from "next/font/google";
 import { Toaster } from "sonner";
 import { AlertNotificationProvider } from "@/components/notifications/alert-notification-provider";
+import { BackgroundAlertsProvider } from "@/components/providers/background-alerts-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import "./globals.css";
 
@@ -36,12 +37,14 @@ export default function RootLayout({
       className={`${jetbrainsMono.variable} ${ibmPlexSans.variable}`}
     >
       <body className="font-sans antialiased">
-        <AlertNotificationProvider
-          simulateAlerts={true}
-          simulationIntervalMs={45000}
-        >
-          <AppShell>{children}</AppShell>
-        </AlertNotificationProvider>
+        <BackgroundAlertsProvider>
+          <AlertNotificationProvider
+            simulateAlerts={false}
+            simulationIntervalMs={45000}
+          >
+            <AppShell>{children}</AppShell>
+          </AlertNotificationProvider>
+        </BackgroundAlertsProvider>
         <Toaster
           position="top-right"
           expand={false}

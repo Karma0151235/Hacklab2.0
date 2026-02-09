@@ -18,6 +18,7 @@ import {
   INITIAL_STEPS,
   AgentStepState,
 } from "@/stores/use-copilot-store";
+import { useAlertStore } from "@/stores/use-alert-store";
 import { MessageBubble } from "./message-bubble";
 import {
   generateChatTitle,
@@ -25,6 +26,7 @@ import {
   getCopilotStatus,
   startCopilotJob,
 } from "@/lib/api/copilot";
+import { showAlertNotification } from "@/components/notifications/alert-notification";
 import { AgentProgressBubble } from "./agent-progress-bubble";
 import { AgentStep } from "./agent-progress-modal";
 import { CopilotJobStatus, SentimentOutput } from "@/lib/types/api";
@@ -89,6 +91,7 @@ export function ChatWindow() {
   const [inputValue, setInputValue] = useState("");
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const lastPolledJobIdRef = useRef<string | null>(null);
+  const addAlert = useAlertStore((state) => state.addAlert);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -135,6 +138,22 @@ export function ChatWindow() {
           const answer = await getCopilotResult(jobId);
           if (answer.sentiment) {
             setSentimentResults(answer.sentiment);
+          }
+          // Trigger critical alerts from copilot response
+          if (answer.alerts && answer.alerts.length > 0) {
+            const criticalAlerts = answer.alerts.filter(a => a.severity === 'high');
+            criticalAlerts.forEach(alert => {
+              // Show toast notification and add to store
+              showAlertNotification(alert, (alertId) => {
+                // onDismiss callback
+                console.log('Alert dismissed:', alertId);
+              }, (alertId) => {
+                // onView callback
+                console.log('Alert viewed:', alertId);
+              });
+              addAlert(alert);
+              console.log('🚨 Critical Alert from Copilot:', alert.alert_type, '-', alert.reason);
+            });
           }
           addMessage({
             id: (Date.now() + 1).toString(),

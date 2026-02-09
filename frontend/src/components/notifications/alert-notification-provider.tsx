@@ -12,10 +12,12 @@ import { AlertSimulator } from './alert-simulator'
  */
 export function AlertNotificationProvider({
   children,
-  simulateAlerts = true,
-  simulationIntervalMs = 45000, // 45 seconds between alerts
+  criticalAlerts = [],
+  simulateAlerts = false, // Disabled by default - alerts now come from copilot response
+  simulationIntervalMs = 45000,
 }: {
   children: React.ReactNode
+  criticalAlerts?: any[]
   simulateAlerts?: boolean
   simulationIntervalMs?: number
 }) {
@@ -36,9 +38,8 @@ export function AlertNotificationProvider({
   return (
     <>
       {children}
-      {simulateAlerts && (
-        <AlertSimulator enabled={simulateAlerts} intervalMs={simulationIntervalMs} />
-      )}
+      {/* Use real alerts from copilot response, with fallback to simulator if needed */}
+      <AlertSimulator enabled={criticalAlerts.length > 0 || simulateAlerts} alerts={criticalAlerts} />
     </>
   )
 }

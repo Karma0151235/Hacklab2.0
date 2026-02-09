@@ -6,9 +6,10 @@ import { cn } from '@/lib/utils'
 interface CompanyCardProps {
   company: Company
   className?: string
+  onAlertClick?: (companyCode: string) => void
 }
 
-export function CompanyCard({ company, className }: CompanyCardProps) {
+export function CompanyCard({ company, className, onAlertClick }: CompanyCardProps) {
   // Calculate health score color
   const getHealthScoreColor = (score?: number) => {
     if (!score) return 'text-text-tertiary'
@@ -84,7 +85,20 @@ export function CompanyCard({ company, className }: CompanyCardProps) {
           </div>
 
           {/* Alerts */}
-          <div className="rounded-md border border-border-secondary bg-bg-elevated p-2">
+          <button
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              if (company.alert_count > 0 && onAlertClick) {
+                onAlertClick(company.company_code)
+              }
+            }}
+            disabled={company.alert_count === 0 || !onAlertClick}
+            className={cn(
+              'rounded-md border border-border-secondary bg-bg-elevated p-2 transition-all text-left',
+              company.alert_count > 0 && onAlertClick && 'cursor-pointer hover:border-error/40 hover:bg-error/5'
+            )}
+          >
             <div className="mb-0.5 flex items-center gap-1">
               <AlertCircle className="h-3 w-3 text-text-tertiary" />
               <p className="font-mono text-xs font-semibold uppercase tracking-wider text-text-tertiary">
@@ -99,7 +113,7 @@ export function CompanyCard({ company, className }: CompanyCardProps) {
             >
               {company.alert_count}
             </p>
-          </div>
+          </button>
 
           {/* Health Score - Temporarily hidden */}
           {/* <div className="rounded-md border border-border-secondary bg-bg-elevated p-2">

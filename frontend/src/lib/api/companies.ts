@@ -80,3 +80,44 @@ export async function getSectors(): Promise<string[]> {
   const sectors = [...new Set(mockCompanies.map((c) => c.sector))]
   return sectors.sort()
 }
+
+/**
+ * Get alerts for a specific company
+ */
+export async function getCompanyAlerts(
+  companyCode: string,
+  severity: string = 'high'
+): Promise<{
+  company_code: string
+  company_name: string
+  alerts: any[]
+  total_count: number
+  critical_count: number
+}> {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/alerts/company/${companyCode}?severity=${severity}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch alerts: ${response.statusText}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error(`Error fetching alerts for company ${companyCode}:`, error)
+    return {
+      company_code: companyCode,
+      company_name: '',
+      alerts: [],
+      total_count: 0,
+      critical_count: 0,
+    }
+  }
+}

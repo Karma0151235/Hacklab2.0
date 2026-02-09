@@ -2,57 +2,40 @@
 
 import { useEffect } from 'react'
 import { useAlertStore } from '@/stores/use-alert-store'
-import { triggerAlertNotification } from './alert-notification'
-import { mockAlerts } from '@/lib/mock-data/alerts'
+import { showAlertNotification } from './alert-notification'
+import { Alert } from '@/lib/types/api'
 
 interface AlertSimulatorProps {
+  alerts?: Alert[]
   enabled?: boolean
-  intervalMs?: number
 }
 
 /**
- * Component that simulates real-time alert generation
- * For demo purposes - replace with actual WebSocket/SSE in production
+ * Component that processes real alerts from copilot response
+ * Displays critical (HIGH severity) alerts only
+ * Replaces old mock-data based simulator
  */
-export function AlertSimulator({ enabled = true, intervalMs = 30000 }: AlertSimulatorProps) {
+export function AlertSimulator({ alerts = [], enabled = true }: AlertSimulatorProps) {
   const addAlert = useAlertStore((state) => state.addAlert)
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !alerts || alerts.length === 0) return
 
-    // Initialize with some mock alerts
-    const activeAlerts = mockAlerts.filter((a) => a.status === 'active')
-    activeAlerts.forEach((alert) => {
-      addAlert(alert)
-    })
+    // Filter for HIGH severity alerts only (critical alerts)
+    const criticalAlerts = alerts.filter((a) => a.severity === 'high')
 
-    // Simulate new alerts arriving periodically
-    const interval = setInterval(() => {
-      // Pick a random active alert from mock data
-      const randomAlert = activeAlerts[Math.floor(Math.random() * activeAlerts.length)]
-
-      if (randomAlert) {
-        // Create a new alert with current timestamp
-        const newAlert = {
-          ...randomAlert,
-          alert_id: `A${Date.now()}`,
-          triggered_at: new Date().toISOString(),
-        }
-
-        // Add to store
-        addAlert(newAlert)
-
-        // Show notification
-        triggerAlertNotification(newAlert)
-
-        console.log('🔔 New alert generated:', newAlert.alert_type, '-', newAlert.company_name)
-      }
-    }, intervalMs)
-
-    return () => {
-      clearInterval(interval)
+    if (criticalAlerts.length === 0) {
+      console.log('ℹ️ No critical alerts in response')
+      return
     }
-  }, [enabled, intervalMs, addAlert])
+
+    // Add each critical alert to store
+    criticalAlerts.forEach((alert) => {
+      addAlert(alert)
+      showAlertNotification(alert)
+      console.log('🚨 Critical Alert:', alert.alert_type, 'for', alert.company_name, '-', alert.reason)
+    })
+  }, [alerts, enabled, addAlert])
 
   return null
 }
